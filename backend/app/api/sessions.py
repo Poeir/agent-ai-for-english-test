@@ -47,10 +47,17 @@ async def start_session(req: SessionCreateRequest, db: AsyncSession = Depends(ge
     if paper.status not in ("completed", "partial"):
         raise HTTPException(status_code=400, detail=f"Paper not ready (status={paper.status})")
 
-    # Load items in paper, grouped by section
+    # Load items in paper, grouped by section. Join PaperSection so we can carry
+    # the authoritative skill on each item (non-passage items like Grammar have
+    # no passage to derive skill from).
     result = await db.execute(
-        select(QuestionItem, Passage)
+        select(QuestionItem, Passage, PaperSection)
         .outerjoin(Passage, QuestionItem.passage_id == Passage.id)
+        .outerjoin(
+            PaperSection,
+            (PaperSection.paper_id == QuestionItem.paper_id)
+            & (PaperSection.name == QuestionItem.section_name),
+        )
         .where(QuestionItem.paper_id == paper.id)
         .order_by(QuestionItem.section_name, QuestionItem.created_at)
     )
@@ -59,17 +66,17 @@ async def start_session(req: SessionCreateRequest, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=400, detail="No items in this paper")
 
     # Shuffle within each section, preserve section order
-    by_section: dict[str | None, list[tuple[QuestionItem, Passage | None]]] = {}
-    for item, passage in rows:
-        by_section.setdefault(item.section_name, []).append((item, passage))
+    by_section: dict[str | None, list[tuple[QuestionItem, Passage | None, PaperSection | None]]] = {}
+    for item, passage, section in rows:
+        by_section.setdefault(item.section_name, []).append((item, passage, section))
     for k in by_section:
         random.shuffle(by_section[k])
 
-    ordered: list[tuple[QuestionItem, Passage | None]] = []
-    for section_name, pairs in by_section.items():
-        ordered.extend(pairs)
+    ordered: list[tuple[QuestionItem, Passage | None, PaperSection | None]] = []
+    for section_name, triples in by_section.items():
+        ordered.extend(triples)
 
-    item_order = [str(i.id) for i, _ in ordered]
+    item_order = [str(i.id) for i, _, _ in ordered]
 
     session = TestSession(
         paper_id=paper.id,
@@ -86,7 +93,10 @@ async def start_session(req: SessionCreateRequest, db: AsyncSession = Depends(ge
         CandidateItemView(
             id=item.id,
             section_name=item.section_name,
-            skill=(passage.skill if passage else None),
+            skill=(
+                (section.skill if section and section.skill else None)
+                or (passage.skill if passage else None)
+            ),
             question_type=item.question_type,
             stem=item.stem,
             options=_strip_options_for_candidate(item.options),
@@ -95,7 +105,7 @@ async def start_session(req: SessionCreateRequest, db: AsyncSession = Depends(ge
             passage_id=item.passage_id,
             passage_content=(passage.content if passage and passage.content else None),
         )
-        for item, passage in ordered
+        for item, passage, section in ordered
     ]
 
     return SessionStartResponse(

@@ -11,6 +11,14 @@ from app.database import AsyncSessionLocal, engine
 from app.models import GenerationJob, Passage, QuestionItem  # noqa: F401 — ensure models are imported for create_all
 
 
+class SPAStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 404 and "." not in path:
+            return await super().get_response("index.html", scope)
+        return response
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.database import Base
@@ -26,6 +34,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
         "http://localhost:5500",
@@ -37,16 +47,20 @@ app.add_middleware(
 )
 
 
-# Mount the static frontend at /ui — repo path: <repo>/frontend/index.html
-_FRONTEND_DIR = os.path.normpath(
+
+# Mount the built React frontend at /ui. During development, run Vite on :5173.
+_FRONTEND_ROOT = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
 )
-if os.path.isdir(_FRONTEND_DIR):
-    app.mount("/ui", StaticFiles(directory=_FRONTEND_DIR, html=True), name="ui")
+_FRONTEND_DIST = os.path.join(_FRONTEND_ROOT, "dist")
+if os.path.isdir(_FRONTEND_DIST):
+    app.mount("/ui", SPAStaticFiles(directory=_FRONTEND_DIST, html=True), name="ui")
 
 
 @app.get("/", include_in_schema=False)
 async def root():
+    if not os.path.isdir(_FRONTEND_DIST):
+        return RedirectResponse(url="http://localhost:5173/ui/")
     return RedirectResponse(url="/ui/")
 
 
