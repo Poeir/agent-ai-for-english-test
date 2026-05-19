@@ -44,6 +44,7 @@ async def judge_node(state: PipelineState) -> dict:
             "judge_results": judge_results,
             "judge_passed": all_pass,
             "should_revise": should_revise,
+            "revision_count": revision_count + 1 if should_revise else revision_count,
             "error": None,
         }
     except (LLMError, json.JSONDecodeError) as e:

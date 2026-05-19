@@ -29,7 +29,7 @@ class QuestionItem(Base):
     passage_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("passages.id"), nullable=True)
     stem: Mapped[str] = mapped_column(Text, nullable=False)
     question_type: Mapped[str | None] = mapped_column(String(50))
-    correct_answer: Mapped[str | None] = mapped_column(String(1))
+    correct_answer: Mapped[str | None] = mapped_column(Text)
     options: Mapped[dict | None] = mapped_column(JSONB)
     cefr_level: Mapped[str | None] = mapped_column(String(5))
     difficulty: Mapped[float | None] = mapped_column(Float)

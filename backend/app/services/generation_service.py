@@ -38,6 +38,7 @@ async def _save_results(state: PipelineState) -> list[str]:
         questions = state.get("questions_with_options") or state.get("raw_questions") or []
         judge_results = state.get("judge_results") or []
         judge_map = {r["question_index"]: r for r in judge_results}
+        revision_count = state.get("revision_count", 0)
 
         for i, q in enumerate(questions):
             judge = judge_map.get(i, {})
@@ -55,6 +56,7 @@ async def _save_results(state: PipelineState) -> list[str]:
                 judge_score=overall_score,
                 judge_detail=judge,
                 status=status,
+                revision_count=revision_count,
             )
             session.add(item)
             await session.flush()
