@@ -19,6 +19,7 @@ langchain-openai = "^0.1"
 pgvector = "^0.3"
 httpx = "^0.27"
 python-dotenv = "^1.0"
+langgraph-cli = {extras = ["inmem"], version = "^0.1"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2"

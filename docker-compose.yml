@@ -31,6 +31,22 @@ services:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+  studio:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-english_test}:${POSTGRES_PASSWORD:-secret}@postgres:5432/${POSTGRES_DB:-english_test}
+    ports:
+      - "8123:8123"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: langgraph dev --host 0.0.0.0 --port 8123
+
   pgadmin:
     image: dpage/pgadmin4:latest
     environment:

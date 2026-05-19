@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "english_test_pipeline": "./app/agents/graph.py:pipeline"
+  },
+  "env": ".env"
+}

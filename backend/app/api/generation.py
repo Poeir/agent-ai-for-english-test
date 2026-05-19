@@ -1,9 +1,11 @@
 import asyncio
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -24,8 +26,10 @@ class JobResponse(BaseModel):
     current_node: str | None = None
     result: dict | None = None
     error_message: str | None = None
+    request: dict | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 @router.post("/generate", response_model=JobResponse)
@@ -55,12 +59,33 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    return _to_response(job)
+
+
+@router.get("/jobs", response_model=list[JobResponse])
+async def list_jobs(
+    status: str | None = Query(None, description="Filter by status: pending, running, completed, failed"),
+    limit: int = Query(20, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(GenerationJob).order_by(GenerationJob.created_at.desc()).limit(limit).offset(offset)
+    if status:
+        stmt = stmt.where(GenerationJob.status == status)
+    result = await db.execute(stmt)
+    jobs = result.scalars().all()
+    return [_to_response(j) for j in jobs]
+
+
+def _to_response(job: GenerationJob) -> JobResponse:
     return JobResponse(
         job_id=str(job.id),
         status=job.status,
         current_node=job.current_node,
         result=job.result,
         error_message=job.error_message,
+        request=job.request,
         started_at=job.started_at,
         completed_at=job.completed_at,
+        created_at=job.created_at,
     )

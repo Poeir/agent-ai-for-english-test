@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 
 from app.database import AsyncSessionLocal, engine
@@ -39,3 +40,30 @@ from app.api import generation, items  # noqa: E402
 
 app.include_router(generation.router, prefix="/api/v1")
 app.include_router(items.router, prefix="/api/v1")
+
+
+@app.get("/graph", response_class=HTMLResponse, include_in_schema=False)
+async def graph_view():
+    from app.agents.graph import pipeline
+    mermaid_code = pipeline.get_graph().draw_mermaid()
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Pipeline Graph</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    body {{ font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 40px; background: #f8f9fa; }}
+    h2 {{ color: #333; margin-bottom: 24px; }}
+    .mermaid {{ background: white; padding: 32px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }}
+  </style>
+</head>
+<body>
+  <h2>English Test Generation Pipeline</h2>
+  <div class="mermaid">
+{mermaid_code}
+  </div>
+  <script>mermaid.initialize({{ startOnLoad: true, theme: 'default' }});</script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
