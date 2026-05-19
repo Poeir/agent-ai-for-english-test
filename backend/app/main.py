@@ -1,8 +1,10 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.database import AsyncSessionLocal, engine
@@ -22,11 +24,30 @@ app = FastAPI(title="English Test Generation API", version="0.1.0", lifespan=lif
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Mount the static frontend at /ui — repo path: <repo>/frontend/index.html
+_FRONTEND_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
+)
+if os.path.isdir(_FRONTEND_DIR):
+    app.mount("/ui", StaticFiles(directory=_FRONTEND_DIR, html=True), name="ui")
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/ui/")
 
 
 @app.get("/health")

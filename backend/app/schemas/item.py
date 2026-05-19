@@ -21,6 +21,19 @@ class QuestionItemSchema(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PassageWithQuestionsSchema(BaseModel):
+    id: uuid.UUID
+    content: str
+    word_count: int | None
+    cefr_level: str | None
+    topic: str | None
+    skill: str | None
+    created_at: datetime
+    questions: list[QuestionItemSchema]
+
+    model_config = {"from_attributes": True}
+
+
 class GenerationRequest(BaseModel):
     requirement: str
     item_count: int = 5

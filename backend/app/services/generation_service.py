@@ -66,8 +66,29 @@ async def _save_results(state: PipelineState) -> list[str]:
         return item_ids
 
 
+def _trace_from_state(state: dict) -> dict:
+    return {
+        "blueprint": state.get("blueprint"),
+        "passage": state.get("passage"),
+        "raw_questions": state.get("raw_questions"),
+        "questions_with_options": state.get("questions_with_options"),
+        "judge_results": state.get("judge_results"),
+        "revision_count": state.get("revision_count", 0),
+        "judge_passed": state.get("judge_passed", False),
+    }
+
+
+async def _write_progress(job_id: str, current_node: str, accumulated: dict):
+    """Persist a partial pipeline trace so the UI can render per-node output live."""
+    await _update_job(
+        job_id,
+        current_node=current_node,
+        result={"trace": _trace_from_state(accumulated), "in_progress": True},
+    )
+
+
 async def run_pipeline(job_id: str, requirement: str):
-    await _update_job(job_id, status="running", started_at=datetime.now(timezone.utc), current_node="blueprint")
+    await _update_job(job_id, status="running", started_at=datetime.now(timezone.utc), current_node="run_blueprint")
 
     initial_state: PipelineState = {
         "raw_requirement": requirement,
@@ -84,7 +105,15 @@ async def run_pipeline(job_id: str, requirement: str):
     }
 
     try:
-        final_state = await pipeline.ainvoke(initial_state)
+        accumulated: dict = dict(initial_state)
+        final_state: dict = dict(initial_state)
+        async for chunk in pipeline.astream(initial_state):
+            # Each chunk is {node_name: partial_state_update}
+            for node_name, partial in chunk.items():
+                if isinstance(partial, dict):
+                    accumulated.update(partial)
+                    final_state = accumulated
+                    await _write_progress(job_id, node_name, accumulated)
 
         if final_state.get("error"):
             await _update_job(
@@ -99,7 +128,12 @@ async def run_pipeline(job_id: str, requirement: str):
         await _update_job(
             job_id,
             status="completed",
-            result={"item_ids": item_ids, "judge_passed": final_state.get("judge_passed", False)},
+            result={
+                "item_ids": item_ids,
+                "judge_passed": final_state.get("judge_passed", False),
+                "revision_count": final_state.get("revision_count", 0),
+                "trace": _trace_from_state(final_state),
+            },
             completed_at=datetime.now(timezone.utc),
             current_node="done",
         )

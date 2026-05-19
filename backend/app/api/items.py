@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models.item import QuestionItem
-from app.schemas.item import QuestionItemSchema
+from app.models.item import Passage, QuestionItem
+from app.schemas.item import PassageWithQuestionsSchema, QuestionItemSchema
 
 router = APIRouter(tags=["items"])
 
@@ -32,3 +33,28 @@ async def list_items(
     result = await db.execute(stmt)
     items = result.scalars().all()
     return [QuestionItemSchema.model_validate(item) for item in items]
+
+
+@router.get("/passages", response_model=list[PassageWithQuestionsSchema])
+async def list_passages(
+    cefr: str | None = Query(None),
+    skill: str | None = Query(None),
+    topic: str | None = Query(None),
+    limit: int = Query(20, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """Passages with their questions nested — group test items by the test they belong to."""
+    stmt = select(Passage).options(selectinload(Passage.questions))
+
+    if cefr:
+        stmt = stmt.where(Passage.cefr_level == cefr)
+    if skill:
+        stmt = stmt.where(Passage.skill == skill)
+    if topic:
+        stmt = stmt.where(Passage.topic.ilike(f"%{topic}%"))
+
+    stmt = stmt.order_by(Passage.created_at.desc()).limit(limit).offset(offset)
+    result = await db.execute(stmt)
+    passages = result.scalars().all()
+    return [PassageWithQuestionsSchema.model_validate(p) for p in passages]

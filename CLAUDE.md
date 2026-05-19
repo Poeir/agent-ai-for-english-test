@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Maintenance:** Whenever the project undergoes a significant structural change — new agents/nodes added to the pipeline, new services or routers, schema changes, new environment variables, new top-level folders, or a swap of major dependencies — update this file in the same change. Keep the Architecture and Configuration sections in sync with the actual code.
+
 ## Project Overview
 
 AI-powered English test question generation system. A FastAPI backend orchestrates a 3-agent LangGraph pipeline (blueprint → generator → judge) that calls the KKU AI LLM API (OpenAI-compatible) to generate CEFR-leveled English reading/listening/grammar questions, stores them in PostgreSQL, and exposes a job-tracking REST API.
