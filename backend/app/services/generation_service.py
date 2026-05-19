@@ -40,18 +40,27 @@ async def _save_results(state: PipelineState) -> list[str]:
         judge_map = {r["question_index"]: r for r in judge_results}
         revision_count = state.get("revision_count", 0)
 
+        bp_types = state["blueprint"].get("question_types") or []
         for i, q in enumerate(questions):
             judge = judge_map.get(i, {})
             overall_score = judge.get("overall_score")
             passed = judge.get("pass", False)
             status = "validated" if passed else "draft"
 
+            qtype = q.get("question_type") or (bp_types[i % len(bp_types)] if bp_types else None)
+            options = q.get("options")
+            extras = q.get("extras")
+            if extras and isinstance(options, dict):
+                options = {**options, "_extras": extras}
+            elif extras:
+                options = {"_extras": extras}
+
             item = QuestionItem(
                 passage_id=passage.id,
                 stem=q.get("stem") or q.get("question", ""),
-                question_type=state["blueprint"]["question_types"][i % len(state["blueprint"]["question_types"])],
+                question_type=qtype,
                 correct_answer=q.get("answer") or q.get("correct_answer", ""),
-                options=q.get("options"),
+                options=options,
                 cefr_level=state["blueprint"]["cefr"],
                 judge_score=overall_score,
                 judge_detail=judge,

@@ -77,18 +77,20 @@ Shared state is typed in `agents/state.py` (`PipelineState` TypedDict). Prompts 
 
 ### API Layer
 
-Routes split into two routers mounted at `/api/v1/`:
+Routes split into three routers mounted at `/api/v1/`:
 - **api/generation.py**: `POST /generate` (fires async pipeline), `GET /jobs/{job_id}`, `GET /jobs`
-- **api/items.py**: `GET /items` (filtered retrieval of stored question items)
+- **api/items.py**: `GET /items` (filtered retrieval of stored question items), `GET /passages`
+- **api/examples.py**: `POST /examples`, `POST /examples/bulk`, `GET /examples`, `DELETE /examples/{id}` — curated reference questions used as few-shot examples by the generator
 
 `POST /generate` returns immediately with a `job_id`; the pipeline runs in the background. Poll `GET /jobs/{job_id}` to check `status` (`pending → running → completed/failed`).
 
 ### Database
 
-PostgreSQL with pgvector. Three tables managed by Alembic migrations in `backend/alembic/versions/`:
+PostgreSQL with pgvector. Four tables managed by Alembic migrations in `backend/alembic/versions/`:
 - **passages** — generated reading passages (UUID, content, CEFR, topic, skill)
 - **question_items** — individual questions linked to a passage; stores `options` (JSONB), `judge_score`, `judge_detail` (JSONB), `status` (`draft`/`validated`)
 - **generation_jobs** — tracks pipeline execution: `status`, `current_node`, `request` (JSONB), `result` (JSONB with `item_ids`)
+- **example_items** — curated few-shot reference questions (skill, cefr_level, passage, stem, options). The generator agent pulls up to 3 matching examples and injects them into its user prompt so the LLM emulates their style/difficulty.
 
 Async SQLAlchemy 2.0 with asyncpg driver. Session factory in `app/database.py`.
 

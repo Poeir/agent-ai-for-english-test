@@ -63,6 +63,40 @@
                   padding: 2px 8px; border-radius: 4px; font-size: 11px; margin: 2px 4px 2px 0; }
     .sugg-chip  { display: inline-block; background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;
                   padding: 2px 8px; border-radius: 4px; font-size: 11px; margin: 2px 4px 2px 0; }
+    .qtype-card {
+      border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 10px; cursor: pointer;
+      background: white; display: flex; gap: 8px; align-items: flex-start; transition: all .15s;
+    }
+    .qtype-card:hover { border-color: #93c5fd; background: #f8fafc; }
+    .qtype-card.selected { border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+    .qtype-card input { margin-top: 3px; }
+    .qtype-card .qtype-title { font-weight: 600; font-size: 13px; color: #1f2937; }
+    .qtype-card .qtype-desc  { font-size: 11px; color: #6b7280; margin-top: 2px; line-height: 1.35; }
+    .skill-pill {
+      padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      border: 1px solid #d1d5db; background: white; color: #374151; cursor: pointer;
+    }
+    .skill-pill.selected { background: #2563eb; color: white; border-color: #2563eb; }
+    .info-ic {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #e5e7eb; color: #4b5563;
+      font-size: 11px; font-weight: 700; font-style: italic;
+      font-family: Georgia, "Times New Roman", serif;
+      cursor: pointer; user-select: none; line-height: 1;
+      border: 1px solid #d1d5db;
+    }
+    .info-ic:hover { background: #2563eb; color: white; border-color: #2563eb; }
+    .info-panel {
+      background: #f8fafc; border: 1px solid #e2e8f0;
+      border-radius: 6px; padding: 10px 14px; margin-bottom: 10px;
+    }
+    .info-panel-dl {
+      display: grid; grid-template-columns: 160px 1fr;
+      gap: 4px 12px; font-size: 12px;
+    }
+    .info-panel-dl dt { font-weight: 600; color: #1f2937; }
+    .info-panel-dl dd { color: #4b5563; margin: 0; line-height: 1.45; }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -92,17 +126,60 @@
         <label class="block text-sm font-semibold text-gray-700 mb-2">Requirement</label>
         <textarea id="requirement" rows="3"
           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="e.g., Generate 3 B1-level reading comprehension questions about climate change."></textarea>
+          placeholder="e.g., Generate questions about climate change."></textarea>
 
-        <div class="flex items-center gap-4 mt-3">
-          <label class="text-sm text-gray-700">Item count</label>
-          <input id="itemCount" type="number" value="3" min="1" max="20"
-            class="w-20 border border-gray-300 rounded-md px-2 py-1 text-sm" />
+        <!-- Skill picker -->
+        <div class="mt-4">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="text-sm font-semibold text-gray-700">Skill</div>
+            <button type="button" id="skillInfoBtn" class="info-ic" aria-label="Skill info">i</button>
+          </div>
+          <div id="skillInfoPanel" class="info-panel hidden"></div>
+          <div id="skillPicker" class="flex flex-wrap gap-2"></div>
+        </div>
 
+        <!-- CEFR + difficulty quick row -->
+        <div class="flex flex-wrap items-end gap-4 mt-4">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">CEFR level</label>
+            <select id="cefrLevel" class="border border-gray-300 rounded-md px-2 py-1 text-sm">
+              <option value="">Auto</option>
+              <option>A1</option><option>A2</option><option>B1</option>
+              <option>B2</option><option>C1</option><option>C2</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Difficulty</label>
+            <select id="difficulty" class="border border-gray-300 rounded-md px-2 py-1 text-sm">
+              <option value="">Auto</option>
+              <option value="easy">easy</option>
+              <option value="medium">medium</option>
+              <option value="hard">hard</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Item count</label>
+            <input id="itemCount" type="number" value="3" min="1" max="20"
+              class="w-20 border border-gray-300 rounded-md px-2 py-1 text-sm" />
+          </div>
           <button id="runBtn"
             class="ml-auto bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2 rounded-md disabled:bg-gray-400">
             Run pipeline
           </button>
+        </div>
+
+        <!-- Question type picker -->
+        <div class="mt-5">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <div class="text-sm font-semibold text-gray-700">Question types <span class="text-gray-400 font-normal">(choose one or more)</span></div>
+              <button type="button" id="qtypeInfoBtn" class="info-ic" aria-label="Question type info">i</button>
+            </div>
+            <button id="qtypeClear" class="text-xs text-gray-500 hover:text-blue-600">Clear all</button>
+          </div>
+          <div id="qtypeInfoPanel" class="info-panel hidden"></div>
+          <div id="qtypePicker" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+          <p id="qtypeHint" class="text-xs text-gray-400 mt-2"></p>
         </div>
 
         <div id="jobMeta" class="mt-3 text-xs text-gray-500 hidden">
@@ -375,6 +452,131 @@
           `).join("")}
         </dl>`;
     }
+    // === Per-question-type renderers ===
+    const MCQ_SHAPE = new Set([
+      "multiple_choice","main_idea","detail","inference","vocabulary_in_context","tone_purpose",
+    ]);
+
+    function typeBadge(t) {
+      if (!t) return "";
+      return `<span class="text-[10px] uppercase tracking-wide bg-gray-100 text-gray-600 border border-gray-200 rounded px-1.5 py-0.5">${escapeHtml(t)}</span>`;
+    }
+    function answerLine(label, value) {
+      return `<div class="text-xs text-gray-600 mt-1">${escapeHtml(label)}: <span class="font-semibold text-green-700">${escapeHtml(value ?? "—")}</span></div>`;
+    }
+    function extrasOf(q) {
+      // extras can live on q.extras (generator) or q.options._extras (after storage)
+      if (q?.extras) return q.extras;
+      if (q?.options && q.options._extras) return q.options._extras;
+      return null;
+    }
+
+    // --- Generic A/B/C/D option renderer (used by almost every type) ---
+    function renderLetterOptions(opts, correct, { letterLabel = "" } = {}) {
+      const letters = ["A","B","C","D"];
+      const hasAny = letters.some((L) => opts && opts[L] != null && String(opts[L]).trim() !== "");
+      if (!hasAny) {
+        return answerLine("Correct answer", correct);
+      }
+      // True / False / Not Given may only have A/B/C — only render letters that exist
+      const present = letters.filter((L) => opts[L] != null && String(opts[L]).trim() !== "");
+      return present.map((L) => `
+        <div class="opt-row ${L === correct ? "opt-correct" : "opt-wrong"}">
+          <span class="opt-letter">${L}.</span>
+          <span class="text-sm text-gray-800">${escapeHtml(opts[L])}</span>
+          ${L === correct ? `<span class="ml-auto text-xs font-semibold text-green-700">✓ correct</span>` : ""}
+        </div>`).join("");
+    }
+
+    function renderShortAnswer(q) {
+      const ex = extrasOf(q);
+      const limit = ex?.max_words ? ` <span class="text-gray-400">(≤ ${ex.max_words} words)</span>` : "";
+      return `<div class="text-xs text-gray-600 mt-1">Expected answer${limit}:
+        <div class="mt-1 p-2 bg-green-50 border border-green-200 rounded text-sm text-gray-800">${escapeHtml(q.correct_answer || "—")}</div></div>`;
+    }
+    function renderMatching(q) {
+      const opts = q.options || {};
+      const left = Array.isArray(opts.left) ? opts.left : [];
+      const right = Array.isArray(opts.right) ? opts.right : [];
+      return `
+        <div class="grid grid-cols-2 gap-3 mt-2">
+          <div>
+            <div class="text-[11px] font-semibold text-gray-500 uppercase mb-1">Column A</div>
+            <ol class="space-y-1 text-sm">${left.map((t, i) => `<li class="bg-gray-50 border border-gray-200 rounded px-2 py-1"><span class="text-gray-500 mr-1">${i+1}.</span>${escapeHtml(t)}</li>`).join("")}</ol>
+          </div>
+          <div>
+            <div class="text-[11px] font-semibold text-gray-500 uppercase mb-1">Column B</div>
+            <ol class="space-y-1 text-sm">${right.map((t, i) => `<li class="bg-gray-50 border border-gray-200 rounded px-2 py-1"><span class="text-gray-500 mr-1">${String.fromCharCode(65+i)}.</span>${escapeHtml(t)}</li>`).join("")}</ol>
+          </div>
+        </div>
+        ${answerLine("Correct pairing", q.correct_answer)}`;
+    }
+    function renderReordering(q) {
+      const opts = q.options || {};
+      return `
+        <div class="mt-2 text-[11px] font-semibold text-gray-500 uppercase">Unordered items</div>
+        ${renderLetterOptions(opts, null)}
+        ${answerLine("Correct order", q.correct_answer)}`;
+    }
+    function renderErrorID(q) {
+      const ex = extrasOf(q) || {};
+      const correction = ex.correction;
+      return `
+        <div class="mt-2 text-[11px] font-semibold text-gray-500 uppercase">Identify the incorrect segment</div>
+        ${renderLetterOptions(q.options || {}, q.correct_answer)}
+        ${correction ? `<div class="mt-2 text-xs text-gray-600">Corrected sentence: <span class="font-semibold text-gray-800">${escapeHtml(correction)}</span></div>` : ""}`;
+    }
+    function renderEssay(q) {
+      const ex = extrasOf(q) || {};
+      const limits = (ex.min_words || ex.max_words)
+        ? `<div class="text-xs text-gray-500 mt-1">Length: ${ex.min_words ?? "?"}–${ex.max_words ?? "?"} words</div>`
+        : "";
+      const rubric = Array.isArray(ex.rubric) && ex.rubric.length
+        ? `<div class="text-xs text-gray-500 mt-1">Rubric: ${ex.rubric.map(escapeHtml).join(", ")}</div>` : "";
+      return `
+        ${limits}${rubric}
+        <details class="mt-2"><summary class="text-xs text-blue-600 cursor-pointer">Show model answer</summary>
+          <div class="mt-1 p-2 bg-green-50 border border-green-200 rounded text-sm text-gray-800 whitespace-pre-wrap">${escapeHtml(q.correct_answer || "—")}</div>
+        </details>`;
+    }
+    function renderSpeaking(q) {
+      const ex = extrasOf(q) || {};
+      const timing = (ex.prep_seconds || ex.response_seconds)
+        ? `<div class="text-xs text-gray-500 mt-1">Prep: ${ex.prep_seconds ?? "?"}s · Response: ${ex.response_seconds ?? "?"}s</div>` : "";
+      return `
+        ${timing}
+        <details class="mt-2"><summary class="text-xs text-blue-600 cursor-pointer">Show model response</summary>
+          <div class="mt-1 p-2 bg-green-50 border border-green-200 rounded text-sm text-gray-800 whitespace-pre-wrap">${escapeHtml(q.correct_answer || "—")}</div>
+        </details>`;
+    }
+
+    function renderQuestionBody(q) {
+      const t = q.question_type || "";
+      // Free-text types
+      if (t === "short_answer") return renderShortAnswer(q);
+      if (t === "essay") return renderEssay(q);
+      if (t === "speaking_prompt") return renderSpeaking(q);
+      // Special structured types
+      if (t === "matching") return renderMatching(q);
+      if (t === "reordering") return renderReordering(q);
+      if (t === "error_identification") return renderErrorID(q);
+      // Default: A/B/C/D letter options (covers multiple_choice, comprehension types,
+      // true_false_not_given, fill_blank, cloze, and anything else with letter options).
+      return renderLetterOptions(q.options || {}, q.correct_answer);
+    }
+
+    function renderQuestionCard(q, i) {
+      const stem = q.stem || q.question || "";
+      return `
+        <div class="mb-3 pb-3 border-b border-gray-200 last:border-b-0">
+          <div class="flex items-start gap-2 mb-1.5">
+            <div class="text-sm font-medium text-gray-800 flex-1 whitespace-pre-wrap leading-relaxed">Q${i+1}. ${escapeHtml(stem)}</div>
+            ${typeBadge(q.question_type)}
+          </div>
+          ${renderQuestionBody(q)}
+        </div>`;
+    }
+
     function prettyGenerator(d) {
       if (!d || (!d.passage && !d.raw_questions)) return `<div class="text-gray-400 text-sm">No data</div>`;
       const passage = d.passage ? `
@@ -382,31 +584,12 @@
           <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Passage</div>
           <div class="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">${escapeHtml(d.passage)}</div>
         </div>` : "";
-      const qs = (d.raw_questions || []).map((q, i) => `
-        <div class="mb-2 pb-2 border-b border-gray-200 last:border-b-0">
-          <div class="text-sm font-medium text-gray-800">Q${i+1}. ${escapeHtml(q.stem || q.question || "")}</div>
-          <div class="text-xs text-gray-600 mt-0.5">Answer: <span class="font-semibold text-green-700">${escapeHtml(q.correct_answer || q.answer || "—")}</span></div>
-          ${q.question_type ? `<div class="text-xs text-gray-500">Type: ${escapeHtml(q.question_type)}</div>` : ""}
-        </div>`).join("");
+      const qs = (d.raw_questions || []).map(renderQuestionCard).join("");
       return passage + (qs ? `<div><div class="text-xs font-semibold text-gray-500 uppercase mb-1">Questions</div>${qs}</div>` : "");
     }
     function prettyDistractor(items) {
       if (!items || !items.length) return `<div class="text-gray-400 text-sm">No data</div>`;
-      return items.map((q, i) => {
-        const opts = q.options || {};
-        const correct = q.correct_answer;
-        const letters = ["A", "B", "C", "D"];
-        return `
-          <div class="mb-3 pb-3 border-b border-gray-200 last:border-b-0">
-            <div class="text-sm font-medium text-gray-800 mb-1.5">Q${i+1}. ${escapeHtml(q.stem || "")}</div>
-            ${letters.map((L) => `
-              <div class="opt-row ${L === correct ? "opt-correct" : "opt-wrong"}">
-                <span class="opt-letter">${L}.</span>
-                <span class="text-sm text-gray-800">${escapeHtml(opts[L] || "—")}</span>
-                ${L === correct ? `<span class="ml-auto text-xs font-semibold text-green-700">✓ correct</span>` : ""}
-              </div>`).join("")}
-          </div>`;
-      }).join("");
+      return items.map(renderQuestionCard).join("");
     }
     function scoreBarClass(s) {
       if (s == null) return "bad";
@@ -632,10 +815,34 @@
         }
       } catch (e) { console.error("poll error", e); }
     }
-    async function runPipeline() {
-      const requirement = document.getElementById("requirement").value.trim();
+    function composeRequirement() {
+      const base = document.getElementById("requirement").value.trim();
+      const skill = selectedSkill;
+      const cefr = document.getElementById("cefrLevel").value;
+      const difficulty = document.getElementById("difficulty").value;
+      const qtypes = Array.from(selectedQTypes);
       const itemCount = parseInt(document.getElementById("itemCount").value, 10) || 3;
-      if (!requirement) { alert("Please enter a requirement."); return; }
+
+      const parts = [];
+      if (base) parts.push(base);
+      const constraints = [];
+      if (skill) constraints.push(`skill = ${skill}`);
+      if (cefr) constraints.push(`CEFR level = ${cefr}`);
+      if (difficulty) constraints.push(`difficulty = ${difficulty}`);
+      if (qtypes.length) constraints.push(`question_types = [${qtypes.join(", ")}]`);
+      constraints.push(`item_count = ${itemCount}`);
+      parts.push(`Constraints: ${constraints.join("; ")}.`);
+      return parts.join("\n\n");
+    }
+
+    async function runPipeline() {
+      const baseText = document.getElementById("requirement").value.trim();
+      const itemCount = parseInt(document.getElementById("itemCount").value, 10) || 3;
+      if (!baseText && !selectedSkill && selectedQTypes.size === 0) {
+        alert("Please enter a requirement or pick a skill / question type.");
+        return;
+      }
+      const requirement = composeRequirement();
       NODES.forEach((n) => {
         setNodeStatus(n.key, "pending");
         const ip = document.getElementById(`input-${n.key}`);
@@ -734,20 +941,7 @@
                         <span class="score-pill ${scoreClass(q.judge_score)}">${q.judge_score ?? "—"}</span>
                       </div>
                     </div>
-                    ${q.options ? `
-                      <div class="mt-2">
-                        ${["A","B","C","D"].map((L) => `
-                          <div class="opt-row ${L === q.correct_answer ? "opt-correct" : "opt-wrong"}">
-                            <span class="opt-letter">${L}.</span>
-                            <span class="text-sm text-gray-800">${escapeHtml(q.options?.[L] ?? "—")}</span>
-                            ${L === q.correct_answer ? `<span class="ml-auto text-xs font-semibold text-green-700">✓ correct</span>` : ""}
-                          </div>`).join("")}
-                      </div>
-                    ` : `
-                      <div class="mt-2 text-xs text-gray-500">
-                        Correct answer (no MCQ options stored): <strong class="text-gray-800">${escapeHtml(q.correct_answer || "—")}</strong>
-                      </div>
-                    `}
+                    <div class="mt-2">${renderQuestionBody(q)}</div>
                   </div>
                 `).join("")}
               </div>
@@ -811,15 +1005,8 @@
                 </tr>
                 <tr id="exp-${i}" class="hidden bg-slate-50">
                   <td colspan="9" class="p-4">
-                    ${it.options ? `
-                      <div class="mb-2 text-xs font-semibold text-gray-600 uppercase">Options</div>
-                      ${["A","B","C","D"].map(L => `
-                        <div class="opt-row ${L === it.correct_answer ? "opt-correct" : "opt-wrong"}">
-                          <span class="opt-letter">${L}.</span>
-                          <span class="text-sm text-gray-800">${escapeHtml(it.options?.[L] ?? "—")}</span>
-                          ${L === it.correct_answer ? `<span class="ml-auto text-xs font-semibold text-green-700">✓ correct</span>` : ""}
-                        </div>`).join("")}
-                    ` : `<div class="text-xs text-gray-500">No options stored.</div>`}
+                    <div class="mb-2 text-xs font-semibold text-gray-600 uppercase">Details</div>
+                    ${renderQuestionBody(it)}
                   </td>
                 </tr>
               `).join("")}
@@ -887,6 +1074,123 @@
     document.getElementById("reloadPassages").addEventListener("click", loadPassages);
     document.getElementById("reloadItems").addEventListener("click", loadItems);
     document.getElementById("reloadJobs").addEventListener("click", loadJobs);
+
+    // ===================== Skill + Question Type pickers =====================
+    const SKILLS = [
+      { key: "reading",    label: "Reading",    info: "Comprehend written passages; identify main idea, details, inferences." },
+      { key: "listening",  label: "Listening",  info: "Understand spoken audio: dialogues, monologues, key facts and intent." },
+      { key: "writing",    label: "Writing",    info: "Produce written responses: emails, reports, opinion essays, structured paragraphs." },
+      { key: "speaking",   label: "Speaking",   info: "Produce spoken responses: introductions, descriptions, opinions, problem-solving talks." },
+      { key: "grammar",    label: "Grammar",    info: "Apply grammatical rules: tense, agreement, articles, prepositions, word order." },
+      { key: "vocabulary", label: "Vocabulary", info: "Know word meanings, synonyms, collocations, and usage in context." },
+      { key: "integrated", label: "Integrated", info: "Combine two or more skills, e.g. read-then-write or listen-then-speak." },
+    ];
+
+    const QTYPES = [
+      { key: "multiple_choice",      label: "Multiple Choice",      info: "Pick one correct answer from four choices (A/B/C/D). Auto-gradable; widely used.",
+        skills: ["reading","listening","grammar","vocabulary","integrated"] },
+      { key: "true_false_not_given", label: "True / False / NG",    info: "Judge a statement against the passage as True, False, or Not Given (no info).",
+        skills: ["reading","listening","integrated"] },
+      { key: "matching",             label: "Matching",             info: "Match items in column A to items in column B (e.g. words to definitions).",
+        skills: ["reading","listening","integrated","vocabulary"] },
+      { key: "fill_blank",           label: "Fill in the Blanks",   info: "Choose the correct word/phrase to fill a blank in a sentence.",
+        skills: ["reading","grammar","vocabulary","integrated"] },
+      { key: "short_answer",         label: "Short Answer",         info: "Answer a wh-question in 1–10 words. Reduces guessing vs. MCQ.",
+        skills: ["reading","listening","writing","integrated"] },
+      { key: "essay",                label: "Essay / Writing Task", info: "Produce long-form writing (200–400 words) with structure, reasoning, register.",
+        skills: ["writing","integrated"] },
+      { key: "speaking_prompt",      label: "Speaking Prompt",      info: "Respond aloud to a prompt: describe, narrate, or argue. Measures fluency and accuracy.",
+        skills: ["speaking","integrated"] },
+      { key: "cloze",                label: "Cloze Test",           info: "Choose the correct word to complete a blank in a passage. Tests grammar + reading.",
+        skills: ["reading","grammar","integrated"] },
+      { key: "reordering",           label: "Reordering",           info: "Put scrambled sentences / dialogue lines into the correct order.",
+        skills: ["reading","grammar","integrated"] },
+      { key: "error_identification", label: "Error Identification", info: "Identify the incorrect segment in a sentence and provide the correction.",
+        skills: ["grammar","writing","integrated"] },
+    ];
+
+    let selectedSkill = "";
+    const selectedQTypes = new Set();
+
+    function renderSkillPicker() {
+      const wrap = document.getElementById("skillPicker");
+      wrap.innerHTML = SKILLS.map((s) => `
+        <button type="button" class="skill-pill ${selectedSkill === s.key ? "selected" : ""}" data-skill="${s.key}">
+          ${escapeHtml(s.label)}
+        </button>`).join("");
+      wrap.querySelectorAll("[data-skill]").forEach((b) => {
+        b.addEventListener("click", () => {
+          selectedSkill = selectedSkill === b.dataset.skill ? "" : b.dataset.skill;
+          for (const k of Array.from(selectedQTypes)) {
+            const def = QTYPES.find((q) => q.key === k);
+            if (selectedSkill && def && !def.skills.includes(selectedSkill)) selectedQTypes.delete(k);
+          }
+          renderSkillPicker();
+          renderQTypePicker();
+        });
+      });
+    }
+
+    function renderQTypePicker() {
+      const wrap = document.getElementById("qtypePicker");
+      const visible = selectedSkill
+        ? QTYPES.filter((q) => q.skills.includes(selectedSkill))
+        : QTYPES;
+      wrap.innerHTML = visible.map((q) => `
+        <label class="qtype-card ${selectedQTypes.has(q.key) ? "selected" : ""}" data-qtype="${q.key}">
+          <input type="checkbox" ${selectedQTypes.has(q.key) ? "checked" : ""} />
+          <div class="qtype-title">${escapeHtml(q.label)}</div>
+        </label>`).join("");
+      wrap.querySelectorAll(".qtype-card").forEach((el) => {
+        el.addEventListener("click", (e) => {
+          e.preventDefault();
+          const k = el.dataset.qtype;
+          if (selectedQTypes.has(k)) selectedQTypes.delete(k); else selectedQTypes.add(k);
+          renderQTypePicker();
+        });
+      });
+      const hint = document.getElementById("qtypeHint");
+      if (selectedSkill) {
+        hint.textContent = `Showing question types compatible with "${selectedSkill}".`;
+      } else {
+        hint.textContent = "Pick a skill to filter compatible question types, or leave it blank and let the blueprint agent decide.";
+      }
+    }
+
+    function buildInfoPanel(items) {
+      return `<dl class="info-panel-dl">
+        ${items.map((it) => `
+          <dt>${escapeHtml(it.label)}</dt>
+          <dd>${escapeHtml(it.info)}</dd>
+        `).join("")}
+      </dl>`;
+    }
+    document.getElementById("skillInfoBtn").addEventListener("click", () => {
+      const panel = document.getElementById("skillInfoPanel");
+      if (panel.classList.contains("hidden")) {
+        panel.innerHTML = buildInfoPanel(SKILLS);
+        panel.classList.remove("hidden");
+      } else {
+        panel.classList.add("hidden");
+      }
+    });
+    document.getElementById("qtypeInfoBtn").addEventListener("click", () => {
+      const panel = document.getElementById("qtypeInfoPanel");
+      if (panel.classList.contains("hidden")) {
+        panel.innerHTML = buildInfoPanel(QTYPES);
+        panel.classList.remove("hidden");
+      } else {
+        panel.classList.add("hidden");
+      }
+    });
+
+    document.getElementById("qtypeClear").addEventListener("click", () => {
+      selectedQTypes.clear();
+      renderQTypePicker();
+    });
+
+    renderSkillPicker();
+    renderQTypePicker();
 
     renderPanels();
     document.getElementById("runBtn").addEventListener("click", runPipeline);

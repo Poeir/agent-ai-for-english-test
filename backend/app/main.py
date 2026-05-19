@@ -57,10 +57,11 @@ async def health():
     return {"status": "ok", "db": "connected"}
 
 
-from app.api import generation, items  # noqa: E402
+from app.api import examples, generation, items  # noqa: E402
 
 app.include_router(generation.router, prefix="/api/v1")
 app.include_router(items.router, prefix="/api/v1")
+app.include_router(examples.router, prefix="/api/v1")
 
 
 @app.get("/graph", response_class=HTMLResponse, include_in_schema=False)
