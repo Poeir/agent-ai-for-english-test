@@ -49,6 +49,8 @@
     .badge-running { background: #dbeafe; color: #1d4ed8; }
     .badge-pending { background: #f3f4f6; color: #4b5563; }
     .badge-failed { background: #fee2e2; color: #b91c1c; }
+    .badge-cancelled { background: #f3e8ff; color: #6b21a8; }
+    .badge-partial { background: #fef3c7; color: #92400e; }
     .badge-validated { background: #dcfce7; color: #15803d; }
     .badge-draft { background: #fef3c7; color: #92400e; }
     .ambig-low { background: #dcfce7; color: #15803d; }
@@ -106,7 +108,9 @@
         <h1 class="text-3xl font-bold text-gray-800">English Test Generation</h1>
         <p class="text-gray-600 mt-1">LangGraph pipeline viewer + database browser.</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-3">
+        <a href="/ui/papers.html" class="text-sm font-semibold text-blue-600 hover:underline">Test Papers →</a>
+        <span class="text-gray-300">|</span>
         <span class="text-xs text-gray-500">View:</span>
         <button id="viewRaw" class="toggle-btn">Raw JSON</button>
         <button id="viewPretty" class="toggle-btn active">Pretty</button>
@@ -166,6 +170,10 @@
             class="ml-auto bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2 rounded-md disabled:bg-gray-400">
             Run pipeline
           </button>
+          <button id="cancelBtn"
+            class="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-md disabled:bg-gray-300 disabled:cursor-not-allowed hidden">
+            Cancel
+          </button>
         </div>
 
         <!-- Question type picker -->
@@ -223,6 +231,72 @@
 
       <section id="panels" class="space-y-4"></section>
 
+      <!-- Test papers (live) -->
+      <section class="bg-white rounded-lg shadow mt-8">
+        <header class="flex flex-wrap items-end gap-3 p-4 border-b border-gray-100">
+          <div>
+            <div class="text-sm font-semibold text-gray-700">Test Papers</div>
+            <div class="text-xs text-gray-500">Each paper runs one section-job per section. Cancel a paper to abort all its sections at once.</div>
+          </div>
+          <div class="ml-auto flex flex-wrap items-end gap-3">
+            <div>
+              <label class="block text-xs text-gray-600 mb-1">Status</label>
+              <select id="filterPaperStatus" class="border border-gray-300 rounded px-2 py-1 text-sm">
+                <option value="">All</option>
+                <option value="pending">pending</option>
+                <option value="running">running</option>
+                <option value="completed">completed</option>
+                <option value="partial">partial</option>
+                <option value="failed">failed</option>
+                <option value="cancelled">cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-600 mb-1">Limit</label>
+              <input id="filterPaperLimit" type="number" value="10" min="1" max="50" class="w-20 border border-gray-300 rounded px-2 py-1 text-sm" />
+            </div>
+            <button id="reloadPapersBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-1.5 rounded">Reload</button>
+          </div>
+        </header>
+        <div id="papersTableWrap" class="overflow-x-auto">
+          <p class="p-6 text-sm text-gray-500">Loading…</p>
+        </div>
+      </section>
+
+      <!-- All jobs list (live) -->
+      <section class="bg-white rounded-lg shadow mt-8">
+        <header class="flex flex-wrap items-end gap-3 p-4 border-b border-gray-100">
+          <div>
+            <div class="text-sm font-semibold text-gray-700">All Generation Jobs</div>
+            <div class="text-xs text-gray-500">Click <strong>View</strong> to load any job's pipeline above. Refreshes every 3s while a job is running.</div>
+          </div>
+          <div class="ml-auto flex flex-wrap items-end gap-3">
+            <div>
+              <label class="block text-xs text-gray-600 mb-1">Status</label>
+              <select id="filterJobStatus" class="border border-gray-300 rounded px-2 py-1 text-sm">
+                <option value="">All</option>
+                <option value="pending">pending</option>
+                <option value="running">running</option>
+                <option value="completed">completed</option>
+                <option value="failed">failed</option>
+                <option value="cancelled">cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-600 mb-1">Limit</label>
+              <input id="filterJobLimit" type="number" value="20" min="1" max="100" class="w-20 border border-gray-300 rounded px-2 py-1 text-sm" />
+            </div>
+            <label class="flex items-center gap-1 text-xs text-gray-600">
+              <input type="checkbox" id="autoRefreshJobs" checked /> auto-refresh
+            </label>
+            <button id="reloadJobs" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-1.5 rounded">Reload</button>
+          </div>
+        </header>
+        <div id="jobsTableWrap" class="overflow-x-auto">
+          <p class="p-6 text-sm text-gray-500">Loading…</p>
+        </div>
+      </section>
+
       <footer class="text-center text-xs text-gray-400 mt-10">
         Polling <code>/api/v1/jobs/{job_id}</code> every 1s.
       </footer>
@@ -233,7 +307,6 @@
       <div class="flex border-b border-gray-200 mb-4">
         <button class="tab-btn active" data-dbtab="passages">Tests (grouped)</button>
         <button class="tab-btn" data-dbtab="items">All Questions (flat)</button>
-        <button class="tab-btn" data-dbtab="jobs">Generation Jobs</button>
       </div>
 
       <!-- Passages (grouped) sub-tab -->
@@ -302,31 +375,6 @@
         </div>
       </div>
 
-      <!-- Jobs sub-tab -->
-      <div id="dbtab-jobs" class="hidden">
-        <div class="bg-white rounded-lg shadow p-4 mb-4 flex flex-wrap items-end gap-3">
-          <div>
-            <label class="block text-xs text-gray-600 mb-1">Status</label>
-            <select id="filterJobStatus" class="border border-gray-300 rounded px-2 py-1 text-sm">
-              <option value="">All</option>
-              <option value="pending">pending</option>
-              <option value="running">running</option>
-              <option value="completed">completed</option>
-              <option value="failed">failed</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs text-gray-600 mb-1">Limit</label>
-            <input id="filterJobLimit" type="number" value="20" min="1" max="100" class="w-20 border border-gray-300 rounded px-2 py-1 text-sm" />
-          </div>
-          <button id="reloadJobs" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-1.5 rounded">Reload</button>
-        </div>
-        <div class="bg-white rounded-lg shadow overflow-hidden">
-          <div id="jobsTableWrap" class="overflow-x-auto">
-            <p class="p-6 text-sm text-gray-500">Loading…</p>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -354,7 +402,6 @@
         document.getElementById("tab-database").classList.toggle("hidden", tab !== "database");
         if (tab === "database") {
           if (!passagesLoaded) loadPassages();
-          if (!jobsLoaded) loadJobs();
         }
       });
     });
@@ -365,7 +412,6 @@
         const sub = b.dataset.dbtab;
         document.getElementById("dbtab-passages").classList.toggle("hidden", sub !== "passages");
         document.getElementById("dbtab-items").classList.toggle("hidden", sub !== "items");
-        document.getElementById("dbtab-jobs").classList.toggle("hidden", sub !== "jobs");
         if (sub === "passages" && !passagesLoaded) loadPassages();
         if (sub === "items" && !itemsLoaded) loadItems();
       });
@@ -800,6 +846,35 @@
 
     let pollHandle = null;
     let currentJobId = null;
+
+    function setCancelBtnState(job) {
+      const btn = document.getElementById("cancelBtn");
+      if (!btn) return;
+      const cancellable = !!job && (job.status === "pending" || job.status === "running");
+      btn.classList.toggle("hidden", !cancellable);
+      btn.disabled = !cancellable;
+      btn.textContent = "Cancel";
+    }
+
+    async function cancelCurrentJob() {
+      if (!currentJobId) return;
+      const btn = document.getElementById("cancelBtn");
+      btn.disabled = true;
+      btn.textContent = "Cancelling…";
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/jobs/${currentJobId}/cancel`, { method: "POST" });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`HTTP ${res.status}${text ? ": " + text : ""}`);
+        }
+        // Poll loop will pick up the new status and stop itself.
+      } catch (e) {
+        alert("Failed to cancel: " + e.message);
+        btn.disabled = false;
+        btn.textContent = "Cancel";
+      }
+    }
+
     async function pollJob(requirementText) {
       if (!currentJobId) return;
       try {
@@ -807,11 +882,14 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const job = await res.json();
         updateUI(job, requirementText);
-        if (job.status === "completed" || job.status === "failed") {
+        setCancelBtnState(job);
+        if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
           clearInterval(pollHandle);
           pollHandle = null;
           document.getElementById("runBtn").disabled = false;
           document.getElementById("runBtn").textContent = "Run pipeline";
+          loadJobs({ silent: true });
+          loadPapers({ silent: true });
         }
       } catch (e) { console.error("poll error", e); }
     }
@@ -866,8 +944,10 @@
         document.getElementById("jobMeta").classList.remove("hidden");
         document.getElementById("jobId").textContent = job.job_id;
         document.getElementById("jobStatus").textContent = job.status;
+        setCancelBtnState(job);
         if (pollHandle) clearInterval(pollHandle);
         pollHandle = setInterval(() => pollJob(requirement), 1000);
+        loadJobs({ silent: true });
       } catch (e) {
         alert("Failed to start job: " + e.message);
         btn.disabled = false;
@@ -876,7 +956,7 @@
     }
 
     // ====================== Database tab ======================
-    let passagesLoaded = false, itemsLoaded = false, jobsLoaded = false;
+    let passagesLoaded = false, itemsLoaded = false;
 
     async function loadPassages() {
       const wrap = document.getElementById("passagesList");
@@ -1023,9 +1103,107 @@
       }
     }
 
-    async function loadJobs() {
+    // Paper-id → { name, status } map, populated by loadPapers and read by loadJobs.
+    let papersById = {};
+
+    let papersAutoTimer = null;
+    async function loadPapers({ silent = false } = {}) {
+      const wrap = document.getElementById("papersTableWrap");
+      if (!silent) wrap.innerHTML = `<p class="p-6 text-sm text-gray-500">Loading…</p>`;
+      const params = new URLSearchParams();
+      const status = document.getElementById("filterPaperStatus").value;
+      const limit = document.getElementById("filterPaperLimit").value || 10;
+      if (status) params.set("status", status);
+      params.set("limit", limit);
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/papers?${params.toString()}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const papers = await res.json();
+
+        // Refresh papers-by-id map (used by loadJobs to annotate section-jobs).
+        papersById = {};
+        papers.forEach((p) => { papersById[p.id] = { name: p.name, status: p.status }; });
+
+        const anyLive = papers.some((p) => p.status === "pending" || p.status === "running");
+        const auto = document.getElementById("autoRefreshJobs")?.checked;
+        if (papersAutoTimer) { clearTimeout(papersAutoTimer); papersAutoTimer = null; }
+        if (auto && anyLive) {
+          papersAutoTimer = setTimeout(() => loadPapers({ silent: true }), 3000);
+        }
+
+        if (!papers.length) {
+          wrap.innerHTML = `<p class="p-6 text-sm text-gray-500">No test papers yet. <a href="/ui/papers.html" class="text-blue-600 hover:underline">Create one →</a></p>`;
+          return;
+        }
+        wrap.innerHTML = `
+          <table class="db-table">
+            <thead>
+              <tr>
+                <th>#</th><th>Name</th><th>Status</th><th>Sections</th><th>Time</th>
+                <th>Created</th><th>Completed</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${papers.map((p, i) => {
+                const totalSec = p.sections?.length ?? 0;
+                const doneSec = (p.sections || []).filter((s) => s.status === "completed").length;
+                const failedSec = (p.sections || []).filter((s) => s.status === "failed").length;
+                const cancelledSec = (p.sections || []).filter((s) => s.status === "cancelled").length;
+                const sectionsLbl = `${doneSec}/${totalSec} done${failedSec ? ` · ${failedSec} failed` : ""}${cancelledSec ? ` · ${cancelledSec} cancelled` : ""}`;
+                const cancellable = (p.status === "pending" || p.status === "running");
+                return `
+                <tr>
+                  <td>${i + 1}</td>
+                  <td class="max-w-md"><div class="truncate font-medium">${escapeHtml(p.name || "—")}</div></td>
+                  <td><span class="badge badge-${escapeHtml(p.status)}">${escapeHtml(p.status || "—")}</span></td>
+                  <td class="text-xs">${escapeHtml(sectionsLbl)}</td>
+                  <td class="text-xs">${p.time_limit_min ? p.time_limit_min + " min" : "—"}</td>
+                  <td class="text-xs text-gray-500">${escapeHtml((p.created_at || "").slice(0, 19).replace("T", " "))}</td>
+                  <td class="text-xs text-gray-500">${escapeHtml((p.completed_at || "").slice(0, 19).replace("T", " "))}</td>
+                  <td class="whitespace-nowrap">
+                    <a class="toggle-btn" href="/ui/papers.html#paper-${escapeHtml(p.id)}">View</a>
+                    ${cancellable
+                      ? `<button class="toggle-btn" style="border-color:#dc2626;color:#b91c1c;" data-action="cancel-paper" data-paper-id="${escapeHtml(p.id)}">Cancel</button>`
+                      : ""}
+                  </td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>`;
+        wrap.querySelectorAll('button[data-action="cancel-paper"]').forEach((btn) => {
+          btn.addEventListener("click", () => cancelPaperFromTable(btn.dataset.paperId, btn));
+        });
+        // Re-render jobs table so its Paper column picks up the freshly-loaded names.
+        loadJobs({ silent: true });
+      } catch (e) {
+        wrap.innerHTML = `<p class="p-6 text-sm text-red-600">Failed to load papers: ${escapeHtml(e.message)}</p>`;
+      }
+    }
+
+    async function cancelPaperFromTable(paperId, btn) {
+      if (!confirm("Cancel this paper? All in-flight sections will be aborted.")) return;
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Cancelling…";
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/papers/${paperId}/cancel`, { method: "POST" });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`HTTP ${res.status}${text ? ": " + text : ""}`);
+        }
+        await loadPapers();
+        await loadJobs({ silent: true });
+      } catch (e) {
+        alert("Failed to cancel paper: " + e.message);
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+
+    let jobsAutoTimer = null;
+    async function loadJobs({ silent = false } = {}) {
       const wrap = document.getElementById("jobsTableWrap");
-      wrap.innerHTML = `<p class="p-6 text-sm text-gray-500">Loading…</p>`;
+      if (!silent) wrap.innerHTML = `<p class="p-6 text-sm text-gray-500">Loading…</p>`;
       const params = new URLSearchParams();
       const status = document.getElementById("filterJobStatus").value;
       const limit = document.getElementById("filterJobLimit").value || 20;
@@ -1035,7 +1213,13 @@
         const res = await fetch(`${API_BASE}/api/v1/jobs?${params.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const jobs = await res.json();
-        jobsLoaded = true;
+        // Schedule next auto-refresh if any jobs are still in flight.
+        const anyLive = jobs.some((j) => j.status === "pending" || j.status === "running");
+        const auto = document.getElementById("autoRefreshJobs")?.checked;
+        if (jobsAutoTimer) { clearTimeout(jobsAutoTimer); jobsAutoTimer = null; }
+        if (auto && anyLive) {
+          jobsAutoTimer = setTimeout(() => loadJobs({ silent: true }), 3000);
+        }
         if (!jobs.length) {
           wrap.innerHTML = `<p class="p-6 text-sm text-gray-500">No jobs found.</p>`;
           return;
@@ -1044,31 +1228,106 @@
           <table class="db-table">
             <thead>
               <tr>
-                <th>#</th><th>Job ID</th><th>Status</th><th>Current</th>
-                <th>Requirement</th><th>Items</th><th>Created</th><th>Completed</th>
+                <th>#</th><th>Job ID</th><th>Paper / Section</th><th>Status</th><th>Current</th>
+                <th>Requirement</th><th>Items</th><th>Created</th><th>Completed</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
               ${jobs.map((j, i) => {
                 const itemCount = j.result?.item_ids?.length ?? "—";
-                const req = j.request?.requirement ?? "—";
+                const paperId = j.request?.paper_id;
+                const sectionName = j.request?.section_name;
+                const paperInfo = paperId ? papersById[paperId] : null;
+                const paperLbl = paperId
+                  ? `<div class="text-xs"><span class="font-semibold">${escapeHtml(paperInfo?.name || paperId.slice(0, 8) + "…")}</span>
+                       <span class="text-gray-500"> · ${escapeHtml(sectionName || "—")}</span></div>`
+                  : `<span class="text-xs text-gray-400">— standalone —</span>`;
+                const req = j.request?.requirement
+                  ?? (j.request?.blueprint
+                      ? `${j.request.blueprint.skill || "?"} · ${j.request.blueprint.cefr || "?"} · ${j.request.blueprint.item_count || "?"} items`
+                      : "—");
+                const cancellable = (j.status === "pending" || j.status === "running");
+                const rowStyle = paperId ? ' style="background:#fafbfc;"' : "";
                 return `
-                <tr>
+                <tr${rowStyle}>
                   <td>${i + 1}</td>
                   <td class="font-mono text-xs">${escapeHtml((j.job_id || "").slice(0, 8))}…</td>
+                  <td>${paperLbl}</td>
                   <td><span class="badge badge-${escapeHtml(j.status)}">${escapeHtml(j.status || "—")}</span></td>
                   <td class="text-xs">${escapeHtml(j.current_node || "—")}</td>
-                  <td class="max-w-md"><div class="truncate">${escapeHtml(req)}</div></td>
+                  <td class="max-w-md"><div class="truncate text-xs">${escapeHtml(req)}</div></td>
                   <td>${itemCount}</td>
                   <td class="text-xs text-gray-500">${escapeHtml((j.created_at || "").slice(0, 19).replace("T", " "))}</td>
                   <td class="text-xs text-gray-500">${escapeHtml((j.completed_at || "").slice(0, 19).replace("T", " "))}</td>
+                  <td class="whitespace-nowrap">
+                    <button class="toggle-btn" data-action="view" data-job-id="${escapeHtml(j.job_id)}">View</button>
+                    ${cancellable
+                      ? `<button class="toggle-btn" style="border-color:#dc2626;color:#b91c1c;" data-action="cancel" data-job-id="${escapeHtml(j.job_id)}">Cancel</button>`
+                      : ""}
+                  </td>
                 </tr>`;
               }).join("")}
             </tbody>
           </table>`;
+        wrap.querySelectorAll("button[data-action]").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const action = btn.dataset.action;
+            const jobId = btn.dataset.jobId;
+            if (action === "view") viewJobInPipeline(jobId);
+            else if (action === "cancel") cancelJobFromTable(jobId, btn);
+          });
+        });
       } catch (e) {
         wrap.innerHTML = `<p class="p-6 text-sm text-red-600">Failed to load jobs: ${escapeHtml(e.message)}</p>`;
       }
+    }
+
+    async function cancelJobFromTable(jobId, btn) {
+      if (!confirm("Cancel this job? In-flight LLM work will be aborted.")) return;
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Cancelling…";
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/jobs/${jobId}/cancel`, { method: "POST" });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`HTTP ${res.status}${text ? ": " + text : ""}`);
+        }
+        await loadJobs();
+      } catch (e) {
+        alert("Failed to cancel: " + e.message);
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+
+    function viewJobInPipeline(jobId) {
+      // Switch to the Pipeline tab and attach polling to this job_id.
+      document.querySelectorAll(".tab-btn[data-tab]").forEach((x) => x.classList.remove("active"));
+      document.querySelector('.tab-btn[data-tab="pipeline"]').classList.add("active");
+      document.getElementById("tab-pipeline").classList.remove("hidden");
+      document.getElementById("tab-database").classList.add("hidden");
+
+      // Reset node cards
+      NODES.forEach((n) => {
+        setNodeStatus(n.key, "pending");
+        const ip = document.getElementById(`input-${n.key}`);
+        const op = document.getElementById(`output-${n.key}`);
+        if (ip) ip.innerHTML = "—";
+        if (op) op.innerHTML = "—";
+      });
+      lastJob = null;
+      currentJobId = jobId;
+      document.getElementById("jobMeta").classList.remove("hidden");
+      document.getElementById("jobId").textContent = jobId;
+      document.getElementById("jobStatus").textContent = "loading…";
+
+      if (pollHandle) clearInterval(pollHandle);
+      // Fire one immediate poll then interval; pollJob will stop itself once terminal.
+      pollJob("");
+      pollHandle = setInterval(() => pollJob(""), 1000);
+      document.getElementById("jobMeta").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     document.getElementById("reloadPassages").addEventListener("click", loadPassages);
@@ -1194,6 +1453,12 @@
 
     renderPanels();
     document.getElementById("runBtn").addEventListener("click", runPipeline);
+    document.getElementById("cancelBtn").addEventListener("click", cancelCurrentJob);
+    document.getElementById("filterJobStatus").addEventListener("change", () => loadJobs());
+    document.getElementById("autoRefreshJobs").addEventListener("change", () => { loadJobs({ silent: true }); loadPapers({ silent: true }); });
+    document.getElementById("filterPaperStatus").addEventListener("change", () => loadPapers());
+    document.getElementById("reloadPapersBtn").addEventListener("click", () => loadPapers());
+    loadPapers().then(() => loadJobs());
   </script>
 </body>
 </html>

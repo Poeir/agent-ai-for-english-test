@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Test Papers — English Test System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    .tab-btn { padding: 8px 16px; font-size: 14px; font-weight: 600; border-bottom: 2px solid transparent; color: #6b7280; cursor: pointer; }
+    .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .badge-completed { background: #dcfce7; color: #15803d; }
+    .badge-partial { background: #fef9c3; color: #a16207; }
+    .badge-failed { background: #fee2e2; color: #b91c1c; }
+    .badge-pending, .badge-running { background: #dbeafe; color: #1d4ed8; }
+    .badge-in_progress { background: #dbeafe; color: #1d4ed8; }
+    .badge-submitted { background: #fef9c3; color: #a16207; }
+    .badge-scored { background: #dcfce7; color: #15803d; }
+    .badge-validated { background: #dcfce7; color: #15803d; }
+    .badge-draft { background: #f3f4f6; color: #4b5563; }
+    .cefr-pill { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; }
+    .cefr-A1, .cefr-A2 { background: #fee2e2; color: #b91c1c; }
+    .cefr-B1, .cefr-B2 { background: #fef9c3; color: #a16207; }
+    .cefr-C1, .cefr-C2 { background: #dcfce7; color: #15803d; }
+    .cefr-below { background: #f3f4f6; color: #4b5563; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #93c5fd; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .section-row { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: #f9fafb; }
+    .opt-row { display: flex; gap: 8px; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; cursor: pointer; border: 1px solid #e5e7eb; background: white; }
+    .opt-row:hover { background: #f3f4f6; }
+    .opt-row.selected { background: #dbeafe; border-color: #2563eb; }
+    .opt-row.correct { background: #dcfce7; border-color: #16a34a; }
+    .opt-row.wrong { background: #fee2e2; border-color: #dc2626; }
+    .opt-letter { font-weight: 700; min-width: 22px; }
+
+    /* PDF-ready layout (off-screen rendering target) */
+    .pdf-page { font-family: 'Helvetica', 'Arial', sans-serif; color: #111; padding: 24px; width: 720px; background: white; }
+    .pdf-page h1 { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
+    .pdf-page h2 { font-size: 16px; font-weight: bold; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #444; }
+    .pdf-page h3 { font-size: 13px; font-weight: bold; margin: 12px 0 6px; }
+    .pdf-page .meta { font-size: 11px; color: #555; margin-bottom: 12px; }
+    .pdf-page .passage { font-size: 12px; line-height: 1.5; margin: 6px 0 10px; padding: 8px 12px; background: #f4f4f4; border-left: 3px solid #999; }
+    .pdf-page .q-block { margin-bottom: 12px; page-break-inside: avoid; }
+    .pdf-page .q-stem { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+    .pdf-page .q-opt { font-size: 12px; margin-left: 16px; }
+    .pdf-page .q-correct { color: #15803d; font-weight: bold; }
+    .pdf-page .pagebreak { page-break-before: always; }
+    .pdf-page .answer-key { font-size: 11px; }
+    .pdf-page .answer-key th, .pdf-page .answer-key td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-6xl mx-auto p-6">
+    <header class="mb-6">
+      <div class="flex items-center justify-between">
+        <h1 class="text-3xl font-bold text-gray-800">Test Papers</h1>
+        <a href="/ui/index.html" class="text-sm text-blue-600 hover:underline">← Pipeline Viewer</a>
+      </div>
+      <p class="text-gray-600 mt-1">Create structured test papers, take sessions, and see CEFR results.</p>
+    </header>
+
+    <nav class="flex border-b border-gray-200 mb-6">
+      <button class="tab-btn active" data-tab="create">Create paper</button>
+      <button class="tab-btn" data-tab="list">My papers</button>
+      <button class="tab-btn" data-tab="take">Take a test</button>
+      <button class="tab-btn" data-tab="result">Past results</button>
+    </nav>
+
+    <!-- ============== CREATE PAPER ============== -->
+    <div id="tab-create">
+      <section class="bg-white rounded-lg shadow p-5 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div class="md:col-span-2">
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Paper name</label>
+            <input id="paperName" type="text" placeholder="e.g., English Competency Test - B1"
+              class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Time limit (min)</label>
+            <input id="paperTime" type="number" value="60" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Description</label>
+          <input id="paperDesc" type="text" placeholder="optional"
+            class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+        </div>
+
+        <div class="flex items-center justify-between mb-3 mt-6">
+          <h3 class="text-lg font-semibold text-gray-800">Sections</h3>
+          <div class="flex gap-2">
+            <button id="placementBtn" class="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1.5 rounded font-semibold">🎯 CEFR Placement (A2–C2, 40q)</button>
+            <button id="presetBtn" class="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded">B1 preset (Grammar + Reading + Listening + Writing)</button>
+            <button id="addSectionBtn" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded">+ Add section</button>
+          </div>
+        </div>
+
+        <div id="sectionsContainer"></div>
+
+        <div class="mt-4 flex items-center gap-3">
+          <button id="createPaperBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2 rounded-md">Create paper</button>
+          <span id="createStatus" class="text-sm text-gray-600"></span>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============== MY PAPERS ============== -->
+    <div id="tab-list" class="hidden">
+      <section class="bg-white rounded-lg shadow p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-800">All papers</h3>
+          <button id="refreshPapersBtn" class="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded">Refresh</button>
+        </div>
+        <div id="papersList" class="space-y-3"></div>
+      </section>
+
+      <section id="paperDetail" class="bg-white rounded-lg shadow p-5 mt-6 hidden"></section>
+    </div>
+
+    <!-- ============== TAKE A TEST ============== -->
+    <div id="tab-take" class="hidden">
+      <section id="takeStart" class="bg-white rounded-lg shadow p-5 mb-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">Start a test</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Paper</label>
+            <select id="takePaperSelect" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+              <option value="">Loading...</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Your name</label>
+            <input id="takeCandidateName" type="text" placeholder="e.g., Pori"
+              class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <button id="startSessionBtn" class="mt-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2 rounded-md">Start test</button>
+        <span id="startStatus" class="ml-3 text-sm text-gray-600"></span>
+      </section>
+
+      <section id="testActive" class="hidden">
+        <div class="bg-white rounded-lg shadow p-5 mb-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 id="activePaperName" class="text-lg font-semibold text-gray-800"></h3>
+              <p id="activeProgress" class="text-sm text-gray-600 mt-1"></p>
+            </div>
+            <button id="submitTestBtn" class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2 rounded-md">Submit test</button>
+          </div>
+        </div>
+        <div id="testItems"></div>
+      </section>
+
+      <section id="testScoring" class="hidden bg-white rounded-lg shadow p-8 text-center">
+        <div class="spinner mx-auto mb-3" style="width: 32px; height: 32px;"></div>
+        <p class="text-gray-700">Grading your answers...</p>
+        <p class="text-xs text-gray-500 mt-2">This usually takes 10–30 seconds.</p>
+      </section>
+
+      <section id="testResult" class="hidden"></section>
+    </div>
+
+    <!-- ============== PAST RESULTS ============== -->
+    <div id="tab-result" class="hidden">
+      <section class="bg-white rounded-lg shadow p-5">
+        <h3 class="text-lg font-semibold text-gray-800 mb-2">Look up a session result</h3>
+        <p class="text-sm text-gray-600 mb-4">Enter a session ID to view its CEFR breakdown.</p>
+        <div class="flex gap-3">
+          <input id="resultSessionId" type="text" placeholder="session_id (uuid)"
+            class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono" />
+          <button id="lookupResultBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2 rounded-md">View result</button>
+        </div>
+        <div id="resultLookupOutput" class="mt-6"></div>
+      </section>
+    </div>
+  </div>
+
+<script>
+const API = "/api/v1";
+const QTYPES = ["multiple_choice","fill_blank","error_identification","main_idea","detail","inference","vocabulary_in_context","tone_purpose","true_false_not_given","matching","short_answer","essay","cloze","reordering"];
+const SKILLS = ["reading","listening","grammar","vocabulary","writing","speaking","integrated"];
+const CEFRS = ["A1","A2","B1","B2","C1","C2"];
+
+// ===== Tab switching =====
+document.querySelectorAll(".tab-btn[data-tab]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn[data-tab]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    ["create","list","take","result"].forEach(t => {
+      document.getElementById("tab-" + t).classList.toggle("hidden", t !== btn.dataset.tab);
+    });
+    if (btn.dataset.tab === "list") loadPapers();
+    if (btn.dataset.tab === "take") loadPaperOptions();
+  });
+});
+
+// ===== Section builder =====
+let sectionCount = 0;
+function addSection(preset = null) {
+  sectionCount++;
+  const id = `section-${sectionCount}`;
+  const div = document.createElement("div");
+  div.className = "section-row";
+  div.id = id;
+  div.innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <input class="sec-name font-semibold text-gray-800 bg-transparent border-b border-dashed border-gray-300 focus:outline-none focus:border-blue-500 text-base"
+        value="${preset?.name || 'Section ' + sectionCount}" />
+      <button class="text-xs text-red-600 hover:text-red-800" onclick="this.closest('.section-row').remove()">Remove</button>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">Skill</label>
+        <select class="sec-skill w-full border border-gray-300 rounded px-2 py-1 text-sm">
+          ${SKILLS.map(s => `<option ${s === (preset?.skill || 'grammar') ? 'selected' : ''}>${s}</option>`).join("")}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">CEFR</label>
+        <select class="sec-cefr w-full border border-gray-300 rounded px-2 py-1 text-sm">
+          ${CEFRS.map(c => `<option ${c === (preset?.cefr || 'B1') ? 'selected' : ''}>${c}</option>`).join("")}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">Items</label>
+        <input type="number" class="sec-count w-full border border-gray-300 rounded px-2 py-1 text-sm" value="${preset?.item_count || 5}" min="1" max="50" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">Score</label>
+        <input type="number" class="sec-score w-full border border-gray-300 rounded px-2 py-1 text-sm" value="${preset?.section_score || 10}" min="1" />
+      </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">Topic (optional)</label>
+        <input type="text" class="sec-topic w-full border border-gray-300 rounded px-2 py-1 text-sm" value="${preset?.topic || ''}" placeholder="e.g., workplace" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">Time (min, optional)</label>
+        <input type="number" class="sec-time w-full border border-gray-300 rounded px-2 py-1 text-sm" value="${preset?.section_time_min || ''}" />
+      </div>
+    </div>
+    <div class="mb-3">
+      <label class="block text-xs text-gray-600 mb-1">Question types</label>
+      <div class="flex flex-wrap gap-1.5 sec-qtypes">
+        ${QTYPES.map(q => {
+          const checked = (preset?.question_types || []).includes(q);
+          return `<label class="text-xs flex items-center gap-1 bg-white border border-gray-300 rounded px-2 py-1 cursor-pointer hover:bg-blue-50">
+            <input type="checkbox" value="${q}" ${checked ? 'checked' : ''} class="qt-cb" /> ${q}
+          </label>`;
+        }).join("")}
+      </div>
+    </div>
+    <div class="grid grid-cols-3 gap-3">
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">Easy %</label>
+        <input type="number" class="sec-easy w-full border border-gray-300 rounded px-2 py-1 text-sm" value="${(preset?.difficulty_mix?.easy ?? 0.4)*100}" min="0" max="100" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">Medium %</label>
+        <input type="number" class="sec-med w-full border border-gray-300 rounded px-2 py-1 text-sm" value="${(preset?.difficulty_mix?.medium ?? 0.4)*100}" min="0" max="100" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">Hard %</label>
+        <input type="number" class="sec-hard w-full border border-gray-300 rounded px-2 py-1 text-sm" value="${(preset?.difficulty_mix?.hard ?? 0.2)*100}" min="0" max="100" />
+      </div>
+    </div>
+  `;
+  document.getElementById("sectionsContainer").appendChild(div);
+}
+
+document.getElementById("addSectionBtn").addEventListener("click", () => addSection());
+
+document.getElementById("presetBtn").addEventListener("click", () => {
+  document.getElementById("sectionsContainer").innerHTML = "";
+  sectionCount = 0;
+  document.getElementById("paperName").value = "English Competency Test (B1)";
+  document.getElementById("paperTime").value = 60;
+  [
+    {name:"Grammar & Vocabulary", skill:"grammar", cefr:"B1", item_count:10, section_score:25, section_time_min:15, question_types:["multiple_choice","fill_blank","error_identification"], difficulty_mix:{easy:0.4,medium:0.4,hard:0.2}},
+    {name:"Reading", skill:"reading", cefr:"B1", item_count:8, section_score:20, section_time_min:15, topic:"workplace communication", question_types:["main_idea","detail","inference"], difficulty_mix:{easy:0.3,medium:0.5,hard:0.2}},
+    {name:"Listening", skill:"listening", cefr:"B1", item_count:6, section_score:15, section_time_min:10, topic:"office dialogue", question_types:["main_idea","detail"], difficulty_mix:{easy:0.4,medium:0.4,hard:0.2}},
+    {name:"Writing", skill:"writing", cefr:"B1", item_count:1, section_score:20, section_time_min:15, question_types:["essay"]},
+  ].forEach(p => addSection(p));
+});
+
+// CEFR placement test: 2 skills × 5 levels × 4 items = 40 questions, calibrated to discriminate A2–C2
+document.getElementById("placementBtn").addEventListener("click", () => {
+  document.getElementById("sectionsContainer").innerHTML = "";
+  sectionCount = 0;
+  document.getElementById("paperName").value = "CEFR Placement Test (A2–C2)";
+  document.getElementById("paperDesc").value = "Adaptive-style placement across A2–C2. 40 questions, ~60 min.";
+  document.getElementById("paperTime").value = 60;
+  const levels = ["A2", "B1", "B2", "C1", "C2"];
+  const skills = [
+    { display: "Reading", skill: "reading", topic: "everyday situations", question_types: ["main_idea", "detail", "inference", "vocabulary_in_context"], section_time_min: 6 },
+    { display: "Grammar", skill: "grammar", topic: null, question_types: ["multiple_choice", "fill_blank", "error_identification"], section_time_min: 5 },
+  ];
+  const sections = [];
+  skills.forEach(s => {
+    levels.forEach(lvl => {
+      sections.push({
+        name: `${s.display} ${lvl}`,
+        skill: s.skill,
+        cefr: lvl,
+        topic: s.topic,
+        item_count: 4,
+        section_score: 4,
+        section_time_min: s.section_time_min,
+        question_types: s.question_types,
+        difficulty_mix: { easy: 0.25, medium: 0.5, hard: 0.25 },
+      });
+    });
+  });
+  sections.forEach(p => addSection(p));
+});
+
+// Start with 1 empty section
+addSection();
+
+document.getElementById("createPaperBtn").addEventListener("click", async () => {
+  const sections = [];
+  document.querySelectorAll(".section-row").forEach(row => {
+    const qtypes = [...row.querySelectorAll(".qt-cb")].filter(cb => cb.checked).map(cb => cb.value);
+    sections.push({
+      name: row.querySelector(".sec-name").value,
+      skill: row.querySelector(".sec-skill").value,
+      cefr: row.querySelector(".sec-cefr").value,
+      topic: row.querySelector(".sec-topic").value || null,
+      item_count: parseInt(row.querySelector(".sec-count").value),
+      section_score: parseFloat(row.querySelector(".sec-score").value),
+      section_time_min: parseInt(row.querySelector(".sec-time").value) || null,
+      question_types: qtypes,
+      difficulty_mix: {
+        easy: parseFloat(row.querySelector(".sec-easy").value) / 100,
+        medium: parseFloat(row.querySelector(".sec-med").value) / 100,
+        hard: parseFloat(row.querySelector(".sec-hard").value) / 100,
+      },
+    });
+  });
+  const totalScore = sections.reduce((a, s) => a + s.section_score, 0);
+  const body = {
+    name: document.getElementById("paperName").value || "Untitled Paper",
+    description: document.getElementById("paperDesc").value || null,
+    time_limit_min: parseInt(document.getElementById("paperTime").value) || null,
+    total_score: totalScore,
+    sections,
+  };
+  const status = document.getElementById("createStatus");
+  status.textContent = "Creating...";
+  const res = await fetch(`${API}/papers`, { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const err = await res.text();
+    status.textContent = `Failed: ${err}`;
+    return;
+  }
+  const paper = await res.json();
+  status.innerHTML = `Created! <a href="#" data-paper="${paper.id}" class="text-blue-600 underline goto-paper">View ${paper.id.slice(0,8)}…</a>`;
+  status.querySelector(".goto-paper").addEventListener("click", (e) => {
+    e.preventDefault();
+    document.querySelector('.tab-btn[data-tab="list"]').click();
+    setTimeout(() => showPaperDetail(paper.id), 200);
+  });
+});
+
+// ===== Papers list =====
+async function loadPapers() {
+  const container = document.getElementById("papersList");
+  container.innerHTML = `<div class="text-sm text-gray-500">Loading...</div>`;
+  const res = await fetch(`${API}/papers?limit=50`);
+  const papers = await res.json();
+  if (!papers.length) {
+    container.innerHTML = `<div class="text-sm text-gray-500">No papers yet.</div>`;
+    return;
+  }
+  container.innerHTML = papers.map(p => `
+    <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer" data-paper="${p.id}">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="font-semibold text-gray-800">${p.name}</div>
+          <div class="text-xs text-gray-500 mt-1">${p.id.slice(0,8)}… · ${p.sections.length} sections · ${p.total_score || '—'} pts · ${p.time_limit_min || '—'} min</div>
+        </div>
+        <span class="badge badge-${p.status}">${p.status}</span>
+      </div>
+    </div>
+  `).join("");
+  container.querySelectorAll("[data-paper]").forEach(d => d.addEventListener("click", () => showPaperDetail(d.dataset.paper)));
+}
+
+async function showPaperDetail(paperId) {
+  const detail = document.getElementById("paperDetail");
+  detail.classList.remove("hidden");
+  detail.innerHTML = `<div class="text-sm text-gray-500">Loading paper…</div>`;
+  const paperRes = await fetch(`${API}/papers/${paperId}`);
+  const paper = await paperRes.json();
+  const itemsRes = await fetch(`${API}/papers/${paperId}/items`);
+  const items = await itemsRes.json();
+  const itemsBySection = {};
+  items.forEach(i => { (itemsBySection[i.section_name] ||= []).push(i); });
+
+  detail.innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-xl font-bold text-gray-800">${paper.name}</h3>
+        <p class="text-sm text-gray-600">${paper.id} · <span class="badge badge-${paper.status}">${paper.status}</span></p>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="text-right text-sm text-gray-600">
+          ${paper.total_score || '—'} pts · ${paper.time_limit_min || '—'} min · ${paper.sections.length} sections
+        </div>
+        <button id="exportTestPdfBtn" class="bg-gray-700 hover:bg-gray-800 text-white text-xs font-semibold px-3 py-2 rounded">Test PDF</button>
+        <button id="exportKeyPdfBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-2 rounded">Answer Key PDF</button>
+        <span id="pdfStatus" class="text-xs text-gray-600 ml-1"></span>
+      </div>
+    </div>
+    ${paper.sections.map(s => {
+      const secItems = itemsBySection[s.name] || [];
+      const passageContent = s.passage_content;
+      return `
+      <div class="border border-gray-200 rounded-lg p-4 mb-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold text-gray-800">${s.name}
+            <span class="text-xs text-gray-500 font-normal">· ${s.skill} ${s.cefr} · ${s.item_count} items · ${s.section_score} pts</span>
+          </div>
+          <span class="badge badge-${s.status}">${s.status}</span>
+        </div>
+        ${s.error_message ? `<div class="text-xs text-red-600 mb-2">${s.error_message}</div>` : ''}
+        ${passageContent ? `<details class="bg-blue-50 border-l-4 border-blue-400 rounded-r p-3 mb-3" open><summary class="text-xs font-semibold text-blue-700 cursor-pointer mb-1">Passage</summary><div class="text-sm leading-relaxed whitespace-pre-wrap mt-2">${escapeHtml(passageContent)}</div></details>` : ''}
+        <div class="space-y-2 mt-2">
+          ${secItems.map((it, idx) => `
+            <details class="bg-gray-50 rounded p-2 text-sm">
+              <summary class="cursor-pointer">
+                <span class="font-semibold">Q${idx+1}</span>
+                <span class="text-xs text-gray-500">[${it.question_type} · ${it.difficulty_band || '—'} · ${it.score_weight || '—'}pt]</span>
+                ${escapeHtml(it.stem.slice(0, 90))}…
+                <span class="badge badge-${it.status} ml-2">${it.status}</span>
+              </summary>
+              <div class="mt-2 pl-4">
+                <div class="text-sm mb-2">${escapeHtml(it.stem)}</div>
+                ${it.options ? Object.entries(it.options).filter(([k]) => k !== '_extras').map(([k,v]) => `
+                  <div class="opt-row ${k === it.correct_answer ? 'correct' : ''}"><span class="opt-letter">${k}.</span> ${escapeHtml(v)}</div>
+                `).join("") : ''}
+                ${it.objective ? `<div class="text-xs text-gray-600 mt-2"><strong>Objective:</strong> ${escapeHtml(it.objective)}</div>` : ''}
+                ${it.explanation ? `<div class="text-xs text-gray-600 mt-1"><strong>Explanation:</strong> ${escapeHtml(it.explanation)}</div>` : ''}
+                ${it.tags ? `<div class="text-xs text-gray-500 mt-1">Tags: ${it.tags.join(', ')}</div>` : ''}
+                ${it.judge_score ? `<div class="text-xs text-gray-500 mt-1">Judge score: ${it.judge_score}</div>` : ''}
+              </div>
+            </details>
+          `).join("")}
+        </div>
+      </div>
+    `;
+    }).join("")}
+  `;
+  detail.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  document.getElementById("exportTestPdfBtn").addEventListener("click", () => exportPaperPDF(paper, itemsBySection, false));
+  document.getElementById("exportKeyPdfBtn").addEventListener("click", () => exportPaperPDF(paper, itemsBySection, true));
+}
+
+async function exportPaperPDF(paper, itemsBySection, includeAnswers) {
+  const statusEl = document.getElementById("pdfStatus");
+  const setStatus = (msg, color = "text-gray-600") => {
+    if (!statusEl) return;
+    statusEl.className = `text-xs ml-1 ${color}`;
+    statusEl.textContent = msg;
+  };
+
+  setStatus("Preparing PDF…");
+
+  // Pre-fetch passage texts for sections that have them
+  const passageCache = {};
+  for (const sec of paper.sections) {
+    if (sec.passage_id && !passageCache[sec.passage_id]) {
+      try {
+        const r = await fetch(`${API}/passages/${sec.passage_id}`);
+        if (r.ok) passageCache[sec.passage_id] = (await r.json()).content;
+      } catch (e) { /* ignore */ }
+    }
+  }
+
+  let body = `
+    <h1>${escapeHtml(paper.name)}</h1>
+    <div class="meta">
+      ${paper.description ? escapeHtml(paper.description) + ' · ' : ''}
+      Total ${paper.total_score || '—'} points · Time ${paper.time_limit_min || '—'} min · ${paper.sections.length} sections
+      <br/>Generated ${new Date().toLocaleString()}
+    </div>
+  `;
+
+  body += `<h3>Instructions</h3>
+  <ul class="instructions">
+    <li>Answer every question. There is no penalty for wrong answers.</li>
+    <li>For multiple-choice questions, circle the letter of the correct option.</li>
+    <li>For fill-in-the-blank and short-answer questions, write your answer in the space provided.</li>
+    <li>For essays, write in complete sentences within the given word range.</li>
+  </ul>`;
+
+  paper.sections.forEach((sec, sIdx) => {
+    const items = itemsBySection[sec.name] || [];
+    body += `<section class="section">`;
+    body += `<h2>Section ${sIdx + 1}: ${escapeHtml(sec.name)}</h2>`;
+    body += `<div class="meta">${sec.skill} · ${sec.cefr} · ${sec.item_count} items · ${sec.section_score} points · ${sec.section_time_min || '—'} min</div>`;
+
+    if (sec.passage_id && passageCache[sec.passage_id]) {
+      body += `<div class="passage">${escapeHtml(passageCache[sec.passage_id]).replace(/\n/g, '<br/>')}</div>`;
+    }
+
+    items.forEach((it, idx) => {
+      const num = idx + 1;
+      const opts = it.options ? Object.entries(it.options).filter(([k]) => k !== '_extras' && /^[A-D]$/.test(k)) : [];
+      const isFreeText = ["essay","short_answer"].includes(it.question_type);
+      const isFillBlank = it.question_type === "fill_blank";
+
+      body += `<div class="q-block">`;
+      body += `<div class="q-stem">${num}. ${escapeHtml(it.stem)}</div>`;
+
+      if (opts.length) {
+        opts.forEach(([k, v]) => {
+          const cls = (includeAnswers && k === it.correct_answer) ? 'q-opt q-correct' : 'q-opt';
+          body += `<div class="${cls}">${k}. ${escapeHtml(v)}${(includeAnswers && k === it.correct_answer) ? '  ✓' : ''}</div>`;
+        });
+      } else if (isFillBlank) {
+        body += `<div class="q-opt">Answer: ${includeAnswers ? `<strong class="q-correct">${escapeHtml(it.correct_answer || '')}</strong>` : '<span class="blank-line"></span>'}</div>`;
+      } else if (isFreeText) {
+        if (includeAnswers) {
+          body += `<div class="q-opt"><em>Model answer:</em><br/>${escapeHtml(it.correct_answer || '').replace(/\n/g, '<br/>')}</div>`;
+        } else {
+          body += `<div class="write-box ${it.question_type === 'essay' ? 'tall' : 'short'}"></div>`;
+        }
+      }
+
+      if (includeAnswers && it.explanation) {
+        body += `<div class="explanation">Explanation: ${escapeHtml(it.explanation)}</div>`;
+      }
+      body += `</div>`;
+    });
+    body += `</section>`;
+  });
+
+  if (includeAnswers) {
+    body += `<section class="section answer-key-section">`;
+    body += `<h2>Answer Key Summary</h2>`;
+    body += `<table class="answer-key">`;
+    body += `<thead><tr><th>#</th><th>Section</th><th>Type</th><th>CEFR</th><th>Difficulty</th><th>Answer</th></tr></thead><tbody>`;
+    let n = 1;
+    paper.sections.forEach(sec => {
+      (itemsBySection[sec.name] || []).forEach(it => {
+        body += `<tr>
+          <td>${n++}</td>
+          <td>${escapeHtml(sec.name)}</td>
+          <td>${it.question_type}</td>
+          <td>${it.cefr_level || '—'}</td>
+          <td>${it.difficulty_band || '—'}</td>
+          <td><strong>${escapeHtml((it.correct_answer || '').slice(0, 80))}</strong></td>
+        </tr>`;
+      });
+    });
+    body += `</tbody></table></section>`;
+  }
+
+  const title = `${paper.name}${includeAnswers ? ' — Answer Key' : ''}`;
+  const printDoc = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    @page { size: A4 portrait; margin: 15mm 18mm; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: 'Helvetica', 'Arial', sans-serif; color: #111; font-size: 12px; line-height: 1.45; }
+    h1 { font-size: 20px; font-weight: bold; margin: 0 0 4px; }
+    h2 { font-size: 15px; font-weight: bold; margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid #444; }
+    h3 { font-size: 13px; font-weight: bold; margin: 10px 0 6px; }
+    .meta { font-size: 11px; color: #555; margin-bottom: 10px; }
+    .instructions { font-size: 11px; padding-left: 18px; margin: 6px 0 14px; }
+    .instructions li { margin-bottom: 2px; }
+    .section { margin-bottom: 14px; page-break-inside: auto; }
+    .section + .section { page-break-before: auto; }
+    .passage { font-size: 12px; line-height: 1.5; margin: 6px 0 10px; padding: 8px 12px; background: #f4f4f4; border-left: 3px solid #999; page-break-inside: avoid; }
+    .q-block { margin-bottom: 10px; page-break-inside: avoid; }
+    .q-stem { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+    .q-opt { font-size: 12px; margin-left: 16px; margin-bottom: 2px; }
+    .q-correct { color: #15803d; font-weight: bold; }
+    .blank-line { display: inline-block; border-bottom: 1px solid #444; min-width: 200px; height: 1em; vertical-align: middle; }
+    .write-box { border: 1px solid #aaa; margin-top: 6px; }
+    .write-box.short { height: 60px; }
+    .write-box.tall { height: 180px; }
+    .explanation { font-size: 10px; color: #555; margin-top: 4px; font-style: italic; }
+    .answer-key-section { page-break-before: always; }
+    table.answer-key { width: 100%; border-collapse: collapse; font-size: 11px; }
+    table.answer-key th, table.answer-key td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+    table.answer-key thead { display: table-header-group; }
+    table.answer-key tr { page-break-inside: avoid; }
+    @media screen {
+      body { max-width: 780px; margin: 0 auto; padding: 24px; background: #fff; }
+      .print-hint { position: fixed; top: 12px; right: 12px; background: #2563eb; color: white; padding: 10px 16px; border-radius: 6px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); cursor: pointer; }
+    }
+    @media print { .print-hint { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="print-hint" onclick="window.print()">Click to print / Save as PDF</div>
+  ${body}
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () { window.print(); }, 300);
+    });
+  <\/script>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank");
+  if (!win) {
+    setStatus("Popup blocked — allow popups for this site.", "text-red-600");
+    return;
+  }
+  win.document.open();
+  win.document.write(printDoc);
+  win.document.close();
+  setStatus("Print dialog opened — choose 'Save as PDF'.", "text-green-600");
+  setTimeout(() => setStatus(""), 4000);
+}
+
+document.getElementById("refreshPapersBtn").addEventListener("click", loadPapers);
+
+// ===== Take a test =====
+async function loadPaperOptions() {
+  const sel = document.getElementById("takePaperSelect");
+  sel.innerHTML = `<option value="">Loading...</option>`;
+  const res = await fetch(`${API}/papers?limit=50`);
+  const papers = await res.json();
+  const ready = papers.filter(p => p.status === "completed" || p.status === "partial");
+  if (!ready.length) {
+    sel.innerHTML = `<option value="">No papers ready. Create one first.</option>`;
+    return;
+  }
+  sel.innerHTML = ready.map(p => `<option value="${p.id}">${p.name} [${p.status}]</option>`).join("");
+}
+
+let activeSessionId = null;
+let activeSessionItems = [];
+
+document.getElementById("startSessionBtn").addEventListener("click", async () => {
+  const paperId = document.getElementById("takePaperSelect").value;
+  const name = document.getElementById("takeCandidateName").value || "Anonymous";
+  if (!paperId) return alert("Please pick a paper.");
+  const status = document.getElementById("startStatus");
+  status.textContent = "Starting...";
+  const res = await fetch(`${API}/sessions`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({paper_id: paperId, candidate_name: name}) });
+  if (!res.ok) {
+    const err = await res.text();
+    status.textContent = `Failed: ${err}`;
+    return;
+  }
+  const session = await res.json();
+  activeSessionId = session.session_id;
+  activeSessionItems = session.items;
+  status.textContent = "";
+  document.getElementById("takeStart").classList.add("hidden");
+  document.getElementById("testActive").classList.remove("hidden");
+  document.getElementById("activePaperName").textContent = session.paper_name;
+  renderTestItems();
+});
+
+function renderTestItems() {
+  const container = document.getElementById("testItems");
+  // Group by section, then by passage_id within section
+  const sections = {};
+  activeSessionItems.forEach(it => (sections[it.section_name || "Section"] ||= []).push(it));
+
+  container.innerHTML = Object.entries(sections).map(([secName, items]) => {
+    // Sub-group by passage_id (null passage_id = standalone items, e.g., grammar)
+    const groups = [];
+    const passageMap = new Map();   // passage_id -> group index
+    items.forEach(it => {
+      const key = it.passage_id || `__solo_${groups.length}`;
+      if (it.passage_id && passageMap.has(it.passage_id)) {
+        groups[passageMap.get(it.passage_id)].items.push(it);
+      } else {
+        const g = { passage: it.passage_content, items: [it] };
+        if (it.passage_id) passageMap.set(it.passage_id, groups.length);
+        groups.push(g);
+      }
+    });
+
+    const groupsHtml = groups.map(g => {
+      const passageHtml = g.passage
+        ? `<div class="bg-blue-50 border-l-4 border-blue-400 rounded-r p-4 mb-3 text-sm leading-relaxed whitespace-pre-wrap">${escapeHtml(g.passage)}</div>`
+        : '';
+      return `<div class="mb-6">${passageHtml}${g.items.map((it, idx) => renderItem(it, idx)).join("")}</div>`;
+    }).join("");
+
+    // Renumber Qs across the whole section
+    let idx = 0;
+    const numbered = groupsHtml.replace(/data-q-placeholder/g, () => `Q${++idx}`);
+
+    return `
+      <div class="bg-white rounded-lg shadow p-5 mb-4">
+        <h4 class="font-semibold text-gray-800 mb-3 pb-2 border-b">${escapeHtml(secName)}</h4>
+        ${numbered}
+      </div>
+    `;
+  }).join("");
+  attachAnswerHandlers();
+  updateProgress();
+}
+
+function renderItem(it, idx) {
+  const isMCQ = it.options && Object.keys(it.options).some(k => /^[A-D]$/.test(k));
+  const isFreeText = ["essay","short_answer"].includes(it.question_type);
+  const qLabel = `<span class="text-xs font-bold text-gray-500 mr-1">data-q-placeholder.</span>`;
+  const stemHtml = `<div class="text-sm mb-3">${qLabel}${escapeHtml(it.stem)}</div>`;
+  const meta = `<div class="text-xs text-gray-500 mb-1">${it.question_type} · ${it.score_weight || '—'} pt</div>`;
+  if (isMCQ) {
+    return `
+      <div class="mb-5" data-item="${it.id}">
+        ${meta}${stemHtml}
+        ${Object.entries(it.options).filter(([k]) => k !== '_extras').map(([k,v]) => `
+          <div class="opt-row" data-letter="${k}"><span class="opt-letter">${k}.</span> ${escapeHtml(v)}</div>
+        `).join("")}
+      </div>`;
+  } else if (isFreeText) {
+    return `
+      <div class="mb-5" data-item="${it.id}">
+        ${meta}${stemHtml}
+        <textarea class="free-text w-full border border-gray-300 rounded-md px-3 py-2 text-sm" rows="6" placeholder="Type your answer here..."></textarea>
+      </div>`;
+  } else {
+    return `
+      <div class="mb-5" data-item="${it.id}">
+        ${meta}${stemHtml}
+        <input type="text" class="free-text w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="Type your answer here..." />
+      </div>`;
+  }
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function attachAnswerHandlers() {
+  document.querySelectorAll(".opt-row[data-letter]").forEach(row => {
+    row.addEventListener("click", async () => {
+      const itemId = row.closest("[data-item]").dataset.item;
+      row.parentElement.querySelectorAll(".opt-row").forEach(r => r.classList.remove("selected"));
+      row.classList.add("selected");
+      await sendAnswer(itemId, row.dataset.letter);
+    });
+  });
+  document.querySelectorAll(".free-text").forEach(ta => {
+    let timer;
+    ta.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        const itemId = ta.closest("[data-item]").dataset.item;
+        await sendAnswer(itemId, ta.value);
+      }, 800);
+    });
+  });
+}
+
+async function sendAnswer(itemId, answer) {
+  const res = await fetch(`${API}/sessions/${activeSessionId}/answer`, {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({item_id: itemId, answer})
+  });
+  if (res.ok) {
+    const d = await res.json();
+    document.getElementById("activeProgress").textContent = `${d.answered_count} of ${d.total_count} answered`;
+  }
+}
+
+function updateProgress() {
+  document.getElementById("activeProgress").textContent = `0 of ${activeSessionItems.length} answered`;
+}
+
+document.getElementById("submitTestBtn").addEventListener("click", async () => {
+  if (!confirm("Submit your test? You cannot change answers after submitting.")) return;
+  document.getElementById("testActive").classList.add("hidden");
+  document.getElementById("testScoring").classList.remove("hidden");
+  await fetch(`${API}/sessions/${activeSessionId}/submit`, { method: "POST" });
+  pollResult(activeSessionId);
+});
+
+async function pollResult(sessionId) {
+  for (let i = 0; i < 40; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    const res = await fetch(`${API}/sessions/${sessionId}/result`);
+    const r = await res.json();
+    if (r.status === "scored") {
+      document.getElementById("testScoring").classList.add("hidden");
+      document.getElementById("testResult").classList.remove("hidden");
+      document.getElementById("testResult").innerHTML = renderResult(r);
+      return;
+    }
+  }
+  document.getElementById("testScoring").innerHTML = `<p class="text-red-600">Grading timed out. Try refreshing or use Past results tab with session ID: <code>${sessionId}</code></p>`;
+}
+
+function renderResult(r) {
+  const cefr = r.overall_cefr || "—";
+  const cefrClass = CEFRS.includes(cefr) ? `cefr-${cefr}` : "cefr-below";
+  const pct = r.max_score ? Math.round(100 * r.total_score / r.max_score) : 0;
+
+  // group breakdown by section
+  const bySection = {};
+  (r.breakdown || []).forEach(b => (bySection[b.section_name || "Section"] ||= []).push(b));
+
+  return `
+    <div class="bg-white rounded-lg shadow p-6 mb-4">
+      <div class="text-center mb-4">
+        <div class="text-sm text-gray-500 mb-1">Overall CEFR Level</div>
+        <div class="cefr-pill ${cefrClass} text-2xl">${cefr}</div>
+      </div>
+      <div class="text-center text-3xl font-bold text-gray-800 mb-2">${r.total_score?.toFixed(1) || 0} / ${r.max_score?.toFixed(1) || 0}</div>
+      <div class="text-center text-sm text-gray-600 mb-4">${pct}%</div>
+      <div class="bg-gray-50 rounded p-4 text-sm text-gray-700 italic">${r.verdict || ''}</div>
+      <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        ${Object.entries(r.skill_cefr || {}).map(([skill, lvl]) => `
+          <div class="text-center bg-gray-50 rounded p-3">
+            <div class="text-xs text-gray-500 capitalize">${skill}</div>
+            <div class="font-bold text-lg ${CEFRS.includes(lvl) ? '' : 'text-gray-500'}">${lvl}</div>
+          </div>
+        `).join("")}
+      </div>
+      <div class="text-xs text-gray-400 mt-4 text-center">Session: <code>${r.session_id}</code></div>
+    </div>
+    ${Object.entries(bySection).map(([secName, items]) => {
+      // Group by passage within section
+      const groups = [];
+      const passageMap = new Map();
+      items.forEach(it => {
+        const pid = (it.passage_content || '__solo');
+        if (it.passage_content && passageMap.has(pid)) {
+          groups[passageMap.get(pid)].items.push(it);
+        } else {
+          const g = { passage: it.passage_content, items: [it] };
+          if (it.passage_content) passageMap.set(pid, groups.length);
+          groups.push(g);
+        }
+      });
+
+      let qNum = 0;
+      const groupHtml = groups.map(g => {
+        const passageHtml = g.passage
+          ? `<div class="bg-blue-50 border-l-4 border-blue-400 rounded-r p-3 mb-3 text-sm leading-relaxed whitespace-pre-wrap">${escapeHtml(g.passage)}</div>`
+          : '';
+        return `<div class="mb-4">${passageHtml}${g.items.map(b => renderBreakdownItem(b, qNum++)).join("")}</div>`;
+      }).join("");
+
+      return `
+        <div class="bg-white rounded-lg shadow p-5 mb-4">
+          <h4 class="font-semibold text-gray-800 mb-3 pb-2 border-b">${escapeHtml(secName)}</h4>
+          ${groupHtml}
+        </div>
+      `;
+    }).join("")}
+  `;
+}
+
+function renderBreakdownItem(b, idx) {
+  const earned = b.score_earned ?? 0;
+  const mx = b.score_max ?? 0;
+  const isOk = b.is_correct === true;
+  const isWrong = b.is_correct === false;
+  const isSkipped = b.is_correct === null;
+
+  const statusBadge = isSkipped
+    ? `<span class="badge badge-pending">skipped</span>`
+    : isOk
+    ? `<span class="badge badge-completed">correct</span>`
+    : `<span class="badge badge-failed">wrong</span>`;
+
+  let judgeBlock = "";
+  if (b.judge_detail && (b.judge_detail.task_achievement !== undefined)) {
+    const jd = b.judge_detail;
+    judgeBlock = `
+      <div class="text-xs bg-gray-50 rounded p-2 mt-2">
+        <div class="grid grid-cols-4 gap-2 mb-2">
+          <div>Task: <strong>${jd.task_achievement}</strong>/5</div>
+          <div>Coherence: <strong>${jd.coherence}</strong>/5</div>
+          <div>Lexis: <strong>${jd.lexis}</strong>/5</div>
+          <div>Grammar: <strong>${jd.grammar}</strong>/5</div>
+        </div>
+        <div class="text-gray-700"><strong>Feedback:</strong> ${jd.feedback || ''}</div>
+      </div>
+    `;
+  }
+
+  return `
+    <details class="mb-2">
+      <summary class="cursor-pointer text-sm flex items-center justify-between p-2 hover:bg-gray-50 rounded">
+        <span>Q${idx+1} ${statusBadge} <span class="text-xs text-gray-500">${b.question_type} · ${earned.toFixed(1)}/${mx.toFixed(1)}pt</span></span>
+        <span class="text-xs text-gray-500">${b.cefr_level || ''}</span>
+      </summary>
+      <div class="text-sm bg-gray-50 p-3 rounded mt-1">
+        <div class="text-xs text-gray-600 mb-1"><strong>Your answer:</strong> ${escapeHtml(b.response || '(blank)')}</div>
+        <div class="text-xs text-gray-600 mb-1"><strong>Correct answer:</strong> ${escapeHtml(b.correct_answer || '')}</div>
+        ${b.explanation ? `<div class="text-xs text-gray-700 mt-1"><strong>Explanation:</strong> ${escapeHtml(b.explanation)}</div>` : ''}
+        ${judgeBlock}
+      </div>
+    </details>
+  `;
+}
+
+// ===== Past results =====
+document.getElementById("lookupResultBtn").addEventListener("click", async () => {
+  const sid = document.getElementById("resultSessionId").value.trim();
+  if (!sid) return;
+  const out = document.getElementById("resultLookupOutput");
+  out.innerHTML = `<div class="text-sm text-gray-500">Loading...</div>`;
+  const res = await fetch(`${API}/sessions/${sid}/result`);
+  if (!res.ok) {
+    out.innerHTML = `<div class="text-sm text-red-600">Not found.</div>`;
+    return;
+  }
+  const r = await res.json();
+  if (r.status !== "scored") {
+    out.innerHTML = `<div class="text-sm text-gray-700">Status: <span class="badge badge-${r.status}">${r.status}</span> — not yet scored.</div>`;
+    return;
+  }
+  out.innerHTML = renderResult(r);
+});
+</script>
+</body>
+</html>

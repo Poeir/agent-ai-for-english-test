@@ -37,6 +37,13 @@ class QuestionItem(Base):
     judge_detail: Mapped[dict | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(30), default="draft")
     revision_count: Mapped[int] = mapped_column(Integer, default=0)
+    difficulty_band: Mapped[str | None] = mapped_column(String(10))
+    score_weight: Mapped[float | None] = mapped_column(Float, default=1.0)
+    objective: Mapped[str | None] = mapped_column(Text)
+    explanation: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[list | None] = mapped_column(JSONB)
+    paper_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("papers.id", ondelete="SET NULL"), nullable=True)
+    section_name: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

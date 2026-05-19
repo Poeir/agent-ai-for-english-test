@@ -16,6 +16,13 @@ class QuestionItemSchema(BaseModel):
     judge_score: float | None
     status: str
     revision_count: int
+    difficulty_band: str | None = None
+    score_weight: float | None = None
+    objective: str | None = None
+    explanation: str | None = None
+    tags: list | None = None
+    paper_id: uuid.UUID | None = None
+    section_name: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

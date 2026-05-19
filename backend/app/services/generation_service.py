@@ -10,6 +10,7 @@ from app.agents.state import PipelineState
 from app.database import AsyncSessionLocal
 from app.models.generation_job import GenerationJob
 from app.models.item import Passage, QuestionItem
+from app.services import job_registry
 
 
 async def _update_job(job_id: str, **kwargs):
@@ -21,8 +22,14 @@ async def _update_job(job_id: str, **kwargs):
             await session.commit()
 
 
-async def _save_results(state: PipelineState) -> list[str]:
-    """Persist passage and question items to DB, return list of item IDs."""
+async def _save_results(
+    state: PipelineState,
+    paper_id: str | None = None,
+    section_name: str | None = None,
+) -> tuple[list[str], str | None]:
+    """Persist passage and question items to DB.
+    Returns (item_ids, passage_id_str). When paper_id/section_name are passed, items are tagged with them.
+    """
     async with AsyncSessionLocal() as session:
         passage = Passage(
             content=state["passage"] or "",
@@ -40,7 +47,15 @@ async def _save_results(state: PipelineState) -> list[str]:
         judge_map = {r["question_index"]: r for r in judge_results}
         revision_count = state.get("revision_count", 0)
 
-        bp_types = state["blueprint"].get("question_types") or []
+        bp = state["blueprint"]
+        bp_types = bp.get("question_types") or []
+        # Default score_weight if generator didn't provide one
+        section_score = bp.get("section_score")
+        item_count = bp.get("item_count") or len(questions) or 1
+        default_weight = (section_score / item_count) if section_score else 1.0
+
+        paper_uuid = uuid.UUID(paper_id) if paper_id else None
+
         for i, q in enumerate(questions):
             judge = judge_map.get(i, {})
             overall_score = judge.get("overall_score")
@@ -61,18 +76,25 @@ async def _save_results(state: PipelineState) -> list[str]:
                 question_type=qtype,
                 correct_answer=q.get("answer") or q.get("correct_answer", ""),
                 options=options,
-                cefr_level=state["blueprint"]["cefr"],
+                cefr_level=bp["cefr"],
                 judge_score=overall_score,
                 judge_detail=judge,
                 status=status,
                 revision_count=revision_count,
+                difficulty_band=q.get("difficulty_band"),
+                score_weight=q.get("score_weight") or default_weight,
+                objective=q.get("objective"),
+                explanation=q.get("explanation"),
+                tags=q.get("tags"),
+                paper_id=paper_uuid,
+                section_name=section_name,
             )
             session.add(item)
             await session.flush()
             item_ids.append(str(item.id))
 
         await session.commit()
-        return item_ids
+        return item_ids, str(passage.id)
 
 
 def _trace_from_state(state: dict) -> dict:
@@ -97,6 +119,10 @@ async def _write_progress(job_id: str, current_node: str, accumulated: dict):
 
 
 async def run_pipeline(job_id: str, requirement: str):
+    current = asyncio.current_task()
+    if current is not None:
+        job_registry.register(job_id, current)
+
     await _update_job(job_id, status="running", started_at=datetime.now(timezone.utc), current_node="run_blueprint")
 
     initial_state: PipelineState = {
@@ -133,7 +159,7 @@ async def run_pipeline(job_id: str, requirement: str):
             )
             return
 
-        item_ids = await _save_results(final_state)
+        item_ids, _ = await _save_results(final_state)
         await _update_job(
             job_id,
             status="completed",
@@ -147,6 +173,14 @@ async def run_pipeline(job_id: str, requirement: str):
             current_node="done",
         )
 
+    except asyncio.CancelledError:
+        await asyncio.shield(_update_job(
+            job_id,
+            status="cancelled",
+            error_message="Cancelled by user",
+            completed_at=datetime.now(timezone.utc),
+        ))
+        raise
     except Exception as e:
         await _update_job(
             job_id,
@@ -154,3 +188,78 @@ async def run_pipeline(job_id: str, requirement: str):
             error_message=str(e),
             completed_at=datetime.now(timezone.utc),
         )
+    finally:
+        job_registry.unregister(job_id)
+
+
+async def run_pipeline_for_blueprint(
+    job_id: str,
+    blueprint: dict,
+    paper_id: str | None = None,
+    section_name: str | None = None,
+) -> tuple[list[str], str | None]:
+    """Skip the blueprint agent — caller supplies a fully-formed blueprint dict.
+    Returns (item_ids, passage_id_str). Raises on hard failure so caller can mark section failed.
+    """
+    current = asyncio.current_task()
+    if current is not None:
+        job_registry.register(job_id, current)
+
+    await _update_job(job_id, status="running", started_at=datetime.now(timezone.utc), current_node="run_generator")
+
+    initial_state: PipelineState = {
+        "raw_requirement": "",
+        "job_id": job_id,
+        "blueprint": blueprint,    # pre-seeded → blueprint_node returns {}
+        "passage": None,
+        "raw_questions": None,
+        "questions_with_options": None,
+        "judge_results": None,
+        "judge_passed": False,
+        "revision_count": 0,
+        "should_revise": False,
+        "error": None,
+    }
+
+    try:
+        accumulated: dict = dict(initial_state)
+        final_state: dict = dict(initial_state)
+        async for chunk in pipeline.astream(initial_state):
+            for node_name, partial in chunk.items():
+                if isinstance(partial, dict):
+                    accumulated.update(partial)
+                    final_state = accumulated
+                    await _write_progress(job_id, node_name, accumulated)
+
+        if final_state.get("error"):
+            await _update_job(
+                job_id, status="failed",
+                error_message=final_state["error"],
+                completed_at=datetime.now(timezone.utc),
+            )
+            raise RuntimeError(final_state["error"])
+
+        item_ids, passage_id = await _save_results(final_state, paper_id=paper_id, section_name=section_name)
+        await _update_job(
+            job_id, status="completed",
+            result={
+                "item_ids": item_ids,
+                "passage_id": passage_id,
+                "judge_passed": final_state.get("judge_passed", False),
+                "revision_count": final_state.get("revision_count", 0),
+                "trace": _trace_from_state(final_state),
+            },
+            completed_at=datetime.now(timezone.utc),
+            current_node="done",
+        )
+        return item_ids, passage_id
+    except asyncio.CancelledError:
+        await asyncio.shield(_update_job(
+            job_id,
+            status="cancelled",
+            error_message="Cancelled by user",
+            completed_at=datetime.now(timezone.utc),
+        ))
+        raise
+    finally:
+        job_registry.unregister(job_id)

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Query
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -8,6 +10,21 @@ from app.models.item import Passage, QuestionItem
 from app.schemas.item import PassageWithQuestionsSchema, QuestionItemSchema
 
 router = APIRouter(tags=["items"])
+
+
+@router.get("/passages/{passage_id}", response_model=PassageWithQuestionsSchema)
+async def get_passage(passage_id: str, db: AsyncSession = Depends(get_db)):
+    try:
+        uid = uuid.UUID(passage_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid passage_id")
+    result = await db.execute(
+        select(Passage).where(Passage.id == uid).options(selectinload(Passage.questions))
+    )
+    passage = result.scalar_one_or_none()
+    if not passage:
+        raise HTTPException(status_code=404, detail="Passage not found")
+    return PassageWithQuestionsSchema.model_validate(passage)
 
 
 @router.get("/items", response_model=list[QuestionItemSchema])

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.generation_job import GenerationJob
+from app.services import job_registry
 from app.services.generation_service import run_pipeline
 
 router = APIRouter(tags=["generation"])
@@ -43,7 +44,8 @@ async def generate(request: GenerationRequest, db: AsyncSession = Depends(get_db
 
     job_id = str(job.id)
     # Fire-and-forget — does not block the response
-    asyncio.create_task(run_pipeline(job_id, request.requirement))
+    task = asyncio.create_task(run_pipeline(job_id, request.requirement))
+    job_registry.register(job_id, task)
 
     return JobResponse(job_id=job_id, status="pending")
 
@@ -59,6 +61,34 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    return _to_response(job)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobResponse)
+async def cancel_job(job_id: str, db: AsyncSession = Depends(get_db)):
+    try:
+        uid = uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid job_id format")
+
+    job = await db.get(GenerationJob, uid)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status in ("completed", "failed", "cancelled"):
+        raise HTTPException(status_code=409, detail=f"Job already {job.status}")
+
+    signalled = job_registry.cancel(job_id)
+    if not signalled:
+        # Task isn't running on this server (e.g., restart, or job was orphaned).
+        # Mark cancelled directly — no runner will follow up.
+        job.status = "cancelled"
+        job.error_message = "Cancelled by user (task was not running on this server)"
+        job.completed_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(job)
+    # Otherwise: the pipeline runner's CancelledError handler will set the final
+    # cancelled state in the DB. The client will see it on the next poll.
     return _to_response(job)
 
 

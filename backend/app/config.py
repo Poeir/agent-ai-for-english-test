@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     secret_key: str = "change-me"
     judge_pass_threshold: float = 7.0
-    max_revision_loops: int = 3
+    max_revision_loops: int = 1
+    cefr_mastery_threshold: float = 0.7
 
 
 settings = Settings()

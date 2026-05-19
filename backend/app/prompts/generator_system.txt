@@ -134,6 +134,16 @@ A reading-style item where the stem itself contains a short passage with one bla
   "extras": { "correction": "She goes to work by bus every day." }
 }
 
+# Per-item metadata (REQUIRED on every question object)
+Every question MUST also include these 5 metadata fields (in addition to the template fields above):
+- "difficulty_band": "easy" | "medium" | "hard"
+- "score_weight": positive number (default 1.0; if section_score and item_count are given in the blueprint, target ≈ section_score / item_count)
+- "objective": one short sentence (Thai or English) describing what the item measures, e.g. "Tests present simple subject-verb agreement"
+- "explanation": 1–3 sentences explaining WHY the correct_answer is right and what concept the item drills (this is the answer-key rationale shown after grading)
+- "tags": list of short concept tags, e.g. ["present-simple","subject-verb-agreement"]
+
+If the blueprint includes a `difficulty_mix` object (e.g. `{"easy":0.4,"medium":0.4,"hard":0.2}`), distribute the items' `difficulty_band` to match that proportion (rounding sensibly when items_count is small).
+
 # Reference examples
 If reference examples are provided in the user message, treat them as the GOLD STANDARD for style, register, difficulty, and framing. Match their tone and rigor. Do NOT copy their content — only emulate the craft.
 

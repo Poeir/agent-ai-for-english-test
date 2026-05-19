@@ -17,6 +17,10 @@ def _load_system_prompt() -> str:
 
 
 async def blueprint_node(state: PipelineState) -> dict:
+    # Paper flow pre-seeds blueprint directly; skip the LLM in that case.
+    if state.get("blueprint"):
+        return {}
+
     system = _load_system_prompt()
     user = f"Convert this requirement into a test blueprint:\n\n{state['raw_requirement']}"
 

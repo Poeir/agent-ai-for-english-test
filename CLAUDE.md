@@ -75,22 +75,44 @@ Shared state is typed in `agents/state.py` (`PipelineState` TypedDict). Prompts 
 
 `app/utils/llm_client.py` wraps the OpenAI async client pointed at the KKU AI endpoint (`OPENAI_BASE_URL`). All agents call it via `await llm_client.complete(messages)`.
 
+### Test Paper + Session Flow
+
+Beyond the single-pipeline `POST /generate`, the system supports a structured multi-section "test paper" workflow:
+
+1. **`POST /api/v1/papers`** — accepts a list of `SectionSpec` (skill, CEFR, topic, question_types, item_count, section_score, optional `difficulty_mix`). For each section it inserts a `paper_sections` row and a `generation_jobs` row, then `asyncio.create_task` runs `paper_service._orchestrate` which calls `asyncio.gather(*[_run_section(...)], return_exceptions=True)` so one section's failure cannot fail the whole paper. Final paper status: all completed → `completed`, some failed → `partial`, all failed → `failed`.
+2. **Skip-blueprint pipeline path** — `generation_service.run_pipeline_for_blueprint(job_id, blueprint, paper_id, section_name)` pre-seeds `state["blueprint"]`. `blueprint_agent.blueprint_node` early-returns if the blueprint is already set, so paper sections bypass the LLM blueprint step.
+3. **`POST /api/v1/sessions`** — starts a test session for a paper, loads its items, shuffles within section (preserving section order), strips `correct_answer`/`explanation`/`judge_*`, and stores the item order in `test_sessions.item_order`.
+4. **`POST /sessions/{id}/answer`** — incremental save into `test_sessions.responses` JSONB.
+5. **`POST /sessions/{id}/submit`** — schedules `scoring_service.grade_session` via `asyncio.create_task`.
+6. **`scoring_service.grade_session`** — dispatches by `question_type`:
+   - DETERMINISTIC (multiple_choice, main_idea, detail, inference, vocab_in_context, tone_purpose, cloze, error_identification, fill_blank, true_false_not_given, matching, reordering) → pure Python rule check
+   - FREE_TEXT (short_answer, essay) → `grader_agent.grade_free_text` LLM call with the rubric in `prompts/grader_system.txt`
+   - SKIPPED (speaking_prompt) → recorded with `score_earned=None`
+7. **`cefr_service.classify_session`** — after grades persist, computes per-skill mastery by CEFR level, picks the highest level where mastery ≥ `CEFR_MASTERY_THRESHOLD` (with all lower levels also passing), and sets `overall_cefr = min(skill_cefrs)`.
+8. **`GET /sessions/{id}/result`** — returns `total_score`, `max_score`, `overall_cefr`, `skill_cefr`, `verdict`, and full per-item breakdown.
+
 ### API Layer
 
-Routes split into three routers mounted at `/api/v1/`:
+Routes split into five routers mounted at `/api/v1/`:
 - **api/generation.py**: `POST /generate` (fires async pipeline), `GET /jobs/{job_id}`, `GET /jobs`
-- **api/items.py**: `GET /items` (filtered retrieval of stored question items), `GET /passages`
+- **api/items.py**: `GET /items` (filtered retrieval of stored question items), `GET /passages`, `GET /passages/{id}` (single passage with its questions — used by the PDF export)
 - **api/examples.py**: `POST /examples`, `POST /examples/bulk`, `GET /examples`, `DELETE /examples/{id}` — curated reference questions used as few-shot examples by the generator
+- **api/papers.py**: `POST /papers` (structured multi-section test paper, runs sections in parallel via `asyncio.gather` with partial-complete semantics), `GET /papers`, `GET /papers/{id}`, `GET /papers/{id}/items`
+- **api/sessions.py**: `POST /sessions` (start a test session for a paper, returns shuffled candidate-view items), `POST /sessions/{id}/answer`, `POST /sessions/{id}/submit` (triggers async grading + CEFR classification), `GET /sessions/{id}`, `GET /sessions/{id}/result`
 
 `POST /generate` returns immediately with a `job_id`; the pipeline runs in the background. Poll `GET /jobs/{job_id}` to check `status` (`pending → running → completed/failed`).
 
 ### Database
 
-PostgreSQL with pgvector. Four tables managed by Alembic migrations in `backend/alembic/versions/`:
+PostgreSQL with pgvector. Eight tables managed by Alembic migrations in `backend/alembic/versions/`:
 - **passages** — generated reading passages (UUID, content, CEFR, topic, skill)
-- **question_items** — individual questions linked to a passage; stores `options` (JSONB), `judge_score`, `judge_detail` (JSONB), `status` (`draft`/`validated`)
+- **question_items** — individual questions linked to a passage; stores `options` (JSONB), `judge_score`, `judge_detail` (JSONB), `status` (`draft`/`validated`), plus per-item metadata: `difficulty_band`, `score_weight`, `objective`, `explanation`, `tags`, `paper_id`, `section_name`
 - **generation_jobs** — tracks pipeline execution: `status`, `current_node`, `request` (JSONB), `result` (JSONB with `item_ids`)
-- **example_items** — curated few-shot reference questions (skill, cefr_level, passage, stem, options). The generator agent pulls up to 3 matching examples and injects them into its user prompt so the LLM emulates their style/difficulty.
+- **example_items** — curated few-shot reference questions injected into the generator prompt
+- **papers** — top-level test papers with `name`, `total_score`, `time_limit_min`, `status` (`pending/running/completed/partial/failed`), `blueprint_request` JSONB
+- **paper_sections** — one row per section within a paper, links to its own `passage_id` and `job_id`; tracks `status` per section so partial-complete is supported
+- **test_sessions** — candidate test attempts: `paper_id`, `candidate_name`, `responses` (JSONB `{item_id: answer}`), `item_order`, `total_score`, `max_score`, `overall_cefr`, `skill_cefr` (JSONB), `verdict`
+- **session_grades** — per-item grading results: `is_correct`, `score_earned`, `score_max`, `judge_detail` (JSONB; populated for free-text items only)
 
 Async SQLAlchemy 2.0 with asyncpg driver. Session factory in `app/database.py`.
 
@@ -105,6 +127,7 @@ Async SQLAlchemy 2.0 with asyncpg driver. Session factory in `app/database.py`.
 | `OPENAI_BASE_URL` | KKU AI endpoint |
 | `OPENAI_MODEL` | Model name (e.g. `gemini-2.5-flash-lite`) |
 | `JUDGE_PASS_THRESHOLD` | Min score for a question to pass (default 7.0) |
-| `MAX_REVISION_LOOPS` | Max regeneration attempts (default 3) |
+| `MAX_REVISION_LOOPS` | Max regeneration attempts (default 1 — set to limit LLM quota usage) |
+| `CEFR_MASTERY_THRESHOLD` | Min mastery ratio per CEFR level to consider it "achieved" (default 0.7) |
 
 Copy `.env.example` to `.env` and fill in credentials before running locally.
