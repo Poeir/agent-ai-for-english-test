@@ -4,20 +4,18 @@ import { Link, useParams } from "react-router-dom";
 import { Badge } from "../components/ui/Badge";
 import { Card, CardHeader } from "../components/ui/Card";
 import { ErrorState, LoadingState } from "../components/ui/States";
-import { QuestionRenderer } from "../components/domain/QuestionRenderer";
 import { TokenUsage } from "../components/domain/TokenEstimate";
 import { getJob } from "../services/jobsApi";
 import { getPaper, getPaperItems } from "../services/papersApi";
 import type { JobResponse, Paper, PaperSection, QuestionItem } from "../types/api";
 
-type NodeKey = "blueprint" | "generator" | "distractor" | "verifier" | "judge";
+type NodeKey = "blueprint" | "generator" | "distractor" | "judge";
 type NodeStatus = "waiting" | "running" | "done" | "failed";
 
 const NODES: Array<{ key: NodeKey; title: string }> = [
   { key: "blueprint",  title: "Blueprint" },
   { key: "generator",  title: "Generator" },
   { key: "distractor", title: "Distractor" },
-  { key: "verifier",   title: "Verifier" },
   { key: "judge",      title: "Judge" },
 ];
 
@@ -47,7 +45,6 @@ function deriveNodeStatus(node: NodeKey, job: JobResponse | undefined, section: 
       case "blueprint":  return Boolean(trace?.blueprint);
       case "generator":  return Boolean(trace?.raw_questions?.length) || Boolean(trace?.passage);
       case "distractor": return Boolean(trace?.questions_with_options?.length);
-      case "verifier":   return Boolean(trace?.verifier_results?.length);
       case "judge":      return Boolean(trace?.judge_results?.length);
     }
   })();
@@ -103,13 +100,6 @@ function summaryFor(node: NodeKey, trace: any): string | null {
     case "distractor": {
       const qs = trace.questions_with_options || [];
       return qs.length ? `${qs.length} finalized` : null;
-    }
-    case "verifier": {
-      const rs = trace.verifier_results || [];
-      if (!rs.length) return null;
-      const agree = rs.filter((r: any) => r.agrees === true).length;
-      const skipped = rs.filter((r: any) => r.skipped === true).length;
-      return `${agree}/${rs.length} agree${skipped ? ` · ${skipped} skip` : ""}`;
     }
     case "judge": {
       const rs = trace.judge_results || [];
@@ -303,7 +293,7 @@ export function PaperDetailPage() {
           >
             👁 View Test
           </button>
-          <button
+          {/* <button
             type="button"
             className="btn"
             disabled={!canExport}
@@ -311,8 +301,8 @@ export function PaperDetailPage() {
             title={canExport ? "Open the test paper in a new window for printing / Save as PDF" : "Available once generation finishes"}
           >
             📄 Test PDF
-          </button>
-          <button
+          </button> */}
+          {/* <button
             type="button"
             className="btn"
             disabled={!canExport}
@@ -320,7 +310,7 @@ export function PaperDetailPage() {
             title={canExport ? "Open the answer key in a new window for printing / Save as PDF" : "Available once generation finishes"}
           >
             🔑 Answer Key PDF
-          </button>
+          </button> */}
           <Link className="btn" to="/sessions/take">Take test</Link>
         </div>
       </header>
@@ -358,19 +348,6 @@ export function PaperDetailPage() {
           ))}
         </div>
       </Card>
-
-      {/* Items, after generation */}
-      {(paper.data.status === "completed" || paper.data.status === "partial") ? (
-        <Card>
-          <CardHeader title="Generated Items" />
-          <div className="card-body stack">
-            {items.isLoading ? <LoadingState /> :
-             items.error ? <ErrorState error={items.error} /> :
-             items.data?.length ? items.data.map((item) => <QuestionRenderer key={item.id} item={item} showAnswer />) :
-             <div className="muted">No items yet.</div>}
-          </div>
-        </Card>
-      ) : null}
 
       {showPreview && paper.data && items.data ? (
         <PaperPreviewModal

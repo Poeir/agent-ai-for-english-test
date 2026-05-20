@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered English test question generation system. A FastAPI backend orchestrates a 5-agent LangGraph pipeline (blueprint → generator → distractor → verifier → judge) that calls the KKU AI LLM API (OpenAI-compatible) to generate CEFR-leveled English reading/listening/grammar questions, stores them in PostgreSQL, and exposes a job-tracking REST API.
+AI-powered English test question generation system. A FastAPI backend orchestrates a 4-agent LangGraph pipeline (blueprint → generator → distractor → judge) that calls the KKU AI LLM API (OpenAI-compatible) to generate CEFR-leveled English reading/listening/grammar questions, stores them in PostgreSQL, and exposes a job-tracking REST API.
 
 ## Development Commands
 
@@ -59,19 +59,18 @@ langgraph dev --host 0.0.0.0 --port 8123
 
 ### Multi-Agent Pipeline (LangGraph)
 
-The core logic lives in `backend/app/agents/`. The graph defined in `graph.py` runs five agents sequentially with a forced revision loop that always fires exactly once (controlled by `MAX_REVISION_LOOPS`):
+The core logic lives in `backend/app/agents/`. The graph defined in `graph.py` runs four agents sequentially with a forced revision loop that always fires exactly once (controlled by `MAX_REVISION_LOOPS`):
 
 ```
-blueprint_agent → generator_agent → distractor_agent → verifier_agent → judge_agent → [revise once] → end
+blueprint_agent → generator_agent → distractor_agent → judge_agent → [revise once] → end
 ```
 
 - **blueprint_agent.py**: Parses a free-text requirement into a structured JSON blueprint (skill, CEFR level, topic, question types, item count). Early-returns when `state["blueprint"]` is pre-seeded (paper-section path).
-- **generator_agent.py**: Uses the blueprint to generate a passage and question stems + correct answers. Strips markdown fences and validates JSON. On a revision pass, inlines the judge's previous `issues`/`revision_suggestions` (and any verifier mismatches that the judge merged in) directly into its user prompt.
+- **generator_agent.py**: Uses the blueprint to generate a passage and question stems + correct answers. Strips markdown fences and validates JSON. On a revision pass, inlines the judge's previous `issues`/`revision_suggestions` directly into its user prompt.
 - **distractor_agent.py**: For MCQ-shape items lacking complete A/B/C/D options, calls the LLM to finalize options and re-mark the correct letter; pass-through for items that are already complete or are free-text.
-- **verifier_agent.py**: Receives the questions with the `correct_answer` field STRIPPED and independently re-solves each one based only on the passage. Compares its answer to the original claim with deterministic string normalization (forgiving comparison for `matching`/`reordering`). Subjective types (`essay`, `short_answer`, `speaking_prompt`) are recorded but never blocked. Emits `verifier_results` with `{question_index, claimed_answer, verifier_answer, agrees, skipped, reasoning, confidence}`.
-- **judge_agent.py**: Scores each question on `cefr_alignment`, `distractor_quality`, `grammar_naturalness`, and `ambiguity_risk`. After scoring, post-processes the results to merge `verifier_results`: any item flagged `agrees: false` has its `overall_score` capped at `_VERIFIER_FAIL_CAP` (3.0), `pass` forced to `false`, `ambiguity_risk` set to `"high"`, and the mismatch appended to `issues` + `revision_suggestions` so the next generator pass will see it. A question passes if `overall_score ≥ JUDGE_PASS_THRESHOLD` (default 7.0) AND `ambiguity_risk ≠ "high"`. Revision is forced to happen exactly `MAX_REVISION_LOOPS` times (default 1) regardless of pass/fail — the loop is for polish + answer-key correction, not just failure recovery.
+- **judge_agent.py**: Scores each question on `cefr_alignment`, `distractor_quality`, `grammar_naturalness`, and `ambiguity_risk`. A question passes if `overall_score ≥ JUDGE_PASS_THRESHOLD` (default 7.0) AND `ambiguity_risk ≠ "high"`. Revision is forced to happen exactly `MAX_REVISION_LOOPS` times (default 1) regardless of pass/fail — the loop is for polish, not just failure recovery.
 
-Shared state is typed in `agents/state.py` (`PipelineState` TypedDict; includes `verifier_results`). Prompts are loaded from plain-text files in `app/prompts/` (`blueprint_system.txt`, `generator_system.txt`, `distractor_system.txt`, `verifier_system.txt`, `judge_system.txt`).
+Shared state is typed in `agents/state.py` (`PipelineState` TypedDict). Prompts are loaded from plain-text files in `app/prompts/` (`blueprint_system.txt`, `generator_system.txt`, `distractor_system.txt`, `judge_system.txt`).
 
 ### LLM Client
 

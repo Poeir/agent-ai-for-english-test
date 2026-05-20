@@ -2,7 +2,7 @@
 // Numbers are calibrated against measured prompt sizes + typical output volumes; expect ±15% accuracy.
 // Used to give the user a pre-flight estimate of cost before running a job.
 
-export type AgentName = "blueprint" | "generator" | "distractor" | "verifier" | "judge";
+export type AgentName = "blueprint" | "generator" | "distractor" | "judge";
 
 export type TokenEstimate = {
   total_tokens: number;
@@ -42,23 +42,19 @@ export function estimateTokens(
   // Distractor: input grows per question (~150 each), output ~200 each
   const distractorPass = 1395 + 150 * n + 200 * n;
 
-  // Verifier: ~100 input + ~80 output per question
-  const verifierPass = 940 + 100 * n + 80 * n;
-
   // Judge: ~200 input + ~200 output per question (rubric is dense)
   const judgePass = 1750 + 200 * n + 200 * n;
 
-  const mainPass = generatorPass + distractorPass + verifierPass + judgePass;
-  const revisePass = generatorRevisePass + distractorPass + verifierPass + judgePass;
+  const mainPass = generatorPass + distractorPass + judgePass;
+  const revisePass = generatorRevisePass + distractorPass + judgePass;
 
   const totalGenerator   = generatorPass   + revisions * generatorRevisePass;
   const totalDistractor  = distractorPass  * (1 + revisions);
-  const totalVerifier    = verifierPass    * (1 + revisions);
   const totalJudge       = judgePass       * (1 + revisions);
 
   const total = blueprint + mainPass + revisions * revisePass;
 
-  // Rough input/output split: input ~55%, output ~45% (Judge & Verifier dominated by reasoning output).
+  // Rough input/output split: input ~55%, output ~45% (Judge dominated by reasoning output).
   const inputTokens = Math.round(total * 0.55);
   const outputTokens = total - inputTokens;
 
@@ -74,7 +70,6 @@ export function estimateTokens(
       blueprint,
       generator: totalGenerator,
       distractor: totalDistractor,
-      verifier: totalVerifier,
       judge: totalJudge,
     },
     passes: 1 + revisions,

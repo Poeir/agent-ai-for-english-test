@@ -8,7 +8,6 @@ export interface SkillDef {
 
 export const SKILLS: SkillDef[] = [
   { key: "reading",    label: "Reading",    info: "Comprehend written passages; identify main idea, details, inferences." },
-  { key: "listening",  label: "Listening",  info: "Understand spoken audio: dialogues, monologues, key facts and intent." },
   { key: "grammar",    label: "Grammar",    info: "Apply grammatical rules: tense, agreement, articles, prepositions, word order." },
   { key: "vocabulary", label: "Vocabulary", info: "Know word meanings, synonyms, collocations, and usage in context." },
   { key: "writing",    label: "Writing",    info: "Produce written responses: emails, reports, opinion essays, structured paragraphs." },

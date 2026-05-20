@@ -6,7 +6,6 @@ const AGENT_LABEL: Record<AgentName, string> = {
   blueprint: "Blueprint",
   generator: "Generator",
   distractor: "Distractor",
-  verifier: "Verifier",
   judge: "Judge",
 };
 
@@ -14,7 +13,6 @@ const AGENT_COLOR: Record<AgentName, string> = {
   blueprint: "#0ea5e9",
   generator: "#2563eb",
   distractor: "#7c3aed",
-  verifier: "#0d9488",
   judge: "#dc2626",
 };
 
