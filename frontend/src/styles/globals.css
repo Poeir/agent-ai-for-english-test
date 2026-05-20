@@ -462,6 +462,40 @@ button, input, select, textarea { font: inherit; }
   font-size: 12px; color: #14532d;
 }
 .preview-correction strong { color: #14532d; }
+
+/* ===== Bulk Export Modal ===== */
+.export-mode-list { display: grid; gap: 8px; }
+.export-mode-card {
+  display: flex; align-items: flex-start; gap: 12px;
+  text-align: left; font: inherit;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: white; cursor: pointer;
+  padding: 12px 14px; transition: all .15s;
+}
+.export-mode-card:hover { border-color: #93c5fd; background: #f8fafc; }
+.export-mode-card.selected { border-color: var(--primary); background: #eff6ff; box-shadow: 0 0 0 2px rgba(29,78,216,.15); }
+.export-mode-radio { padding-top: 2px; }
+.radio-dot {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid var(--border-strong); border-radius: 50%;
+  background: white;
+}
+.radio-dot.filled { border-color: var(--primary); background: radial-gradient(circle, var(--primary) 0 4px, white 5px); }
+.export-mode-label { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.export-mode-desc { font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+
+.export-paper-list {
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--muted); padding: 8px 12px;
+  max-height: 180px; overflow-y: auto;
+}
+.export-paper-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 4px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.export-paper-row:last-child { border-bottom: none; }
 .preview-explanation {
   margin: 6px 0 0 28px; padding: 6px 10px;
   background: #fef9c3; border-left: 3px solid #ca8a04;

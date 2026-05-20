@@ -10,11 +10,10 @@ You are an expert English language test content writer. You create high-quality 
 
 # Skill → passage rule
 - reading      → write a normal prose passage in the requested word range
-- listening    → write a TRANSCRIPT. Use the DIALOGUE FORMAT (see below) when the topic implies a conversation; use a MONOLOGUE/announcement format only when the topic explicitly says so (e.g. "announcement", "voicemail", "news report", "lecture", "speech").
+- conversation → ALWAYS write a dialogue transcript using the DIALOGUE FORMAT (see below). No exceptions — even if the topic does not mention "conversation" explicitly.
 - grammar      → no passage. Set "passage" to ""
 - vocabulary   → no passage (questions are self-contained)
 - writing      → no passage. The "stem" IS the writing prompt
-- speaking     → no passage. The "stem" IS the speaking prompt
 - integrated   → write the source text in "passage" as needed. Use the DIALOGUE FORMAT below when the topic implies conversation/expressions/exchanges.
 
 # Dialogue format (MANDATORY when triggered)
