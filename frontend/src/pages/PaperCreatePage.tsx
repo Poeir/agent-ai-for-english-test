@@ -8,6 +8,7 @@ import { ErrorState } from "../components/ui/States";
 import { CEFRS, QUESTION_TYPE_DEFS, SKILLS, TYPE_LABELS } from "../data/assessmentOptions";
 import { createPaper } from "../services/papersApi";
 import type { PaperCreateRequest } from "../types/api";
+import { estimateTokens, formatTokens, formatUSD, formatTHB } from "../utils/tokenEstimate";
 
 type SectionDraft = PaperCreateRequest["sections"][number];
 
@@ -94,6 +95,244 @@ const PAPER_TEMPLATES: PaperTemplate[] = [
         section_time_min: 15,
         question_types: ["essay"],
         difficulty_mix: { easy: 0.4, medium: 0.4, hard: 0.2 },
+      },
+    ],
+  },
+  {
+    key: "toeic_lr",
+    label: "TOEIC Listening & Reading",
+    description: "TOEIC L&R style: 5 parts spanning conversations, talks, incomplete sentences, text completion, and reading. ~60 items, B1–C1.",
+    paperName: "TOEIC Practice (Listening & Reading)",
+    paperDescription: "Workplace-focused English assessment mirroring the TOEIC L&R format. Auto-gradable MCQ throughout.",
+    timeLimit: 120,
+    sections: [
+      {
+        name: "Part 3 — Conversations (Listening)",
+        skill: "listening",
+        cefr: "B1",
+        topic: "short business conversations between two or three speakers (office, customer service, travel, meetings)",
+        item_count: 9,
+        section_score: 9,
+        section_time_min: 15,
+        question_types: ["multiple_choice", "main_idea", "detail", "inference"],
+        difficulty_mix: { easy: 0.3, medium: 0.5, hard: 0.2 },
+      },
+      {
+        name: "Part 4 — Short Talks (Listening)",
+        skill: "listening",
+        cefr: "B2",
+        topic: "short monologues: announcements, voicemails, news reports, advertisements, broadcasts",
+        item_count: 9,
+        section_score: 9,
+        section_time_min: 15,
+        question_types: ["multiple_choice", "main_idea", "detail", "tone_purpose"],
+        difficulty_mix: { easy: 0.2, medium: 0.5, hard: 0.3 },
+      },
+      {
+        name: "Part 5 — Incomplete Sentences (Grammar)",
+        skill: "grammar",
+        cefr: "B2",
+        topic: null,
+        item_count: 15,
+        section_score: 15,
+        section_time_min: 12,
+        question_types: ["multiple_choice", "fill_blank"],
+        difficulty_mix: { easy: 0.3, medium: 0.5, hard: 0.2 },
+      },
+      {
+        name: "Part 6 — Text Completion",
+        skill: "reading",
+        cefr: "B2",
+        topic: "business email, internal memo, notice, or short article with 4 blanks",
+        item_count: 8,
+        section_score: 8,
+        section_time_min: 10,
+        question_types: ["cloze", "fill_blank"],
+        difficulty_mix: { easy: 0.25, medium: 0.5, hard: 0.25 },
+      },
+      {
+        name: "Part 7 — Reading Comprehension",
+        skill: "reading",
+        cefr: "C1",
+        topic: "business documents: emails, articles, advertisements, schedules, double passages",
+        item_count: 15,
+        section_score: 15,
+        section_time_min: 35,
+        question_types: ["multiple_choice", "main_idea", "detail", "inference", "vocabulary_in_context"],
+        difficulty_mix: { easy: 0.2, medium: 0.5, hard: 0.3 },
+      },
+    ],
+  },
+  {
+    key: "onet_m6",
+    label: "O-NET English (M.6)",
+    description: "Thai national O-NET English (Grade 12) layout: conversation, vocabulary, grammar, reading, writing. ~50 items, A2–B2.",
+    paperName: "O-NET English (Mathayom 6)",
+    paperDescription: "Practice paper mirroring the Thai O-NET English exam for upper-secondary students.",
+    timeLimit: 90,
+    sections: [
+      {
+        name: "Conversation / Expressions",
+        skill: "integrated",
+        cefr: "A2",
+        topic: "everyday dialogues: greetings, requests, suggestions, apologies, polite responses, school and shopping situations",
+        item_count: 10,
+        section_score: 10,
+        section_time_min: 15,
+        question_types: ["multiple_choice"],
+        difficulty_mix: { easy: 0.5, medium: 0.4, hard: 0.1 },
+      },
+      {
+        name: "Vocabulary",
+        skill: "vocabulary",
+        cefr: "B1",
+        topic: "synonyms, antonyms, collocations, and word usage in school and daily-life contexts",
+        item_count: 10,
+        section_score: 10,
+        section_time_min: 10,
+        question_types: ["multiple_choice", "vocabulary_in_context"],
+        difficulty_mix: { easy: 0.4, medium: 0.5, hard: 0.1 },
+      },
+      {
+        name: "Grammar & Structure",
+        skill: "grammar",
+        cefr: "B1",
+        topic: null,
+        item_count: 10,
+        section_score: 10,
+        section_time_min: 15,
+        question_types: ["multiple_choice", "fill_blank", "error_identification"],
+        difficulty_mix: { easy: 0.4, medium: 0.4, hard: 0.2 },
+      },
+      {
+        name: "Reading Comprehension",
+        skill: "reading",
+        cefr: "B2",
+        topic: "advertisements, signs, short articles, and informational passages relevant to Thai students",
+        item_count: 15,
+        section_score: 15,
+        section_time_min: 30,
+        question_types: ["main_idea", "detail", "inference", "vocabulary_in_context", "tone_purpose"],
+        difficulty_mix: { easy: 0.3, medium: 0.5, hard: 0.2 },
+      },
+      {
+        name: "Writing (Short Response)",
+        skill: "writing",
+        cefr: "B1",
+        topic: "guided paragraph: opinion, description, or short narrative on a familiar topic",
+        item_count: 1,
+        section_score: 10,
+        section_time_min: 20,
+        question_types: ["essay"],
+        difficulty_mix: { easy: 0.3, medium: 0.5, hard: 0.2 },
+      },
+    ],
+  },
+  {
+    key: "tgat_eng",
+    label: "TGAT English Communication",
+    description: "TGAT Part 3 (English Communication): 60 items / 60 min — conversation (30) + reading (30) with vocabulary in context. B1–B2.",
+    paperName: "TGAT English Communication",
+    paperDescription: "Thai university-admission TGAT3 English section: split evenly between functional conversation and reading.",
+    timeLimit: 60,
+    sections: [
+      {
+        name: "Conversation — Dialogue Completion",
+        skill: "integrated",
+        cefr: "B1",
+        topic: "two-person dialogues: opening/closing conversations, polite requests, suggestions, agreement/disagreement, problem-solving",
+        item_count: 15,
+        section_score: 15,
+        section_time_min: 15,
+        question_types: ["multiple_choice"],
+        difficulty_mix: { easy: 0.3, medium: 0.5, hard: 0.2 },
+      },
+      {
+        name: "Conversation — Functional Expressions",
+        skill: "integrated",
+        cefr: "B2",
+        topic: "service encounters and workplace scenarios: best-response selection, register, indirect language",
+        item_count: 15,
+        section_score: 15,
+        section_time_min: 15,
+        question_types: ["multiple_choice"],
+        difficulty_mix: { easy: 0.2, medium: 0.5, hard: 0.3 },
+      },
+      {
+        name: "Reading — Vocabulary in Context",
+        skill: "reading",
+        cefr: "B2",
+        topic: "short academic and general-interest passages emphasising word meaning from context",
+        item_count: 15,
+        section_score: 15,
+        section_time_min: 15,
+        question_types: ["vocabulary_in_context", "multiple_choice"],
+        difficulty_mix: { easy: 0.2, medium: 0.6, hard: 0.2 },
+      },
+      {
+        name: "Reading — Comprehension",
+        skill: "reading",
+        cefr: "B2",
+        topic: "articles, advertisements, infographics and announcements with main-idea, detail and inference questions",
+        item_count: 15,
+        section_score: 15,
+        section_time_min: 15,
+        question_types: ["main_idea", "detail", "inference", "tone_purpose"],
+        difficulty_mix: { easy: 0.2, medium: 0.5, hard: 0.3 },
+      },
+    ],
+  },
+  {
+    key: "tpat1_eng",
+    label: "TPAT1 Critical Reading (English)",
+    description: "TPAT1 (medical-aptitude) English-passage style: critical reading, inference, tone & purpose, vocabulary in context. C1.",
+    paperName: "TPAT1 English Critical Reading",
+    paperDescription: "Advanced critical-reading practice modelled on TPAT1 medical-aptitude English passages.",
+    timeLimit: 60,
+    sections: [
+      {
+        name: "Critical Reading — Scientific Passage",
+        skill: "reading",
+        cefr: "C1",
+        topic: "medical, biology, or health-science article with technical vocabulary and reasoning chains",
+        item_count: 10,
+        section_score: 10,
+        section_time_min: 20,
+        question_types: ["main_idea", "detail", "inference", "tone_purpose", "vocabulary_in_context"],
+        difficulty_mix: { easy: 0.1, medium: 0.5, hard: 0.4 },
+      },
+      {
+        name: "Critical Reading — Argumentative Passage",
+        skill: "reading",
+        cefr: "C1",
+        topic: "opinion editorial or persuasive essay on ethics, society, or science policy",
+        item_count: 10,
+        section_score: 10,
+        section_time_min: 20,
+        question_types: ["main_idea", "inference", "tone_purpose", "vocabulary_in_context"],
+        difficulty_mix: { easy: 0.1, medium: 0.5, hard: 0.4 },
+      },
+      {
+        name: "Vocabulary in Academic Context",
+        skill: "vocabulary",
+        cefr: "C1",
+        topic: "academic and scientific vocabulary; nuanced synonyms, formal register",
+        item_count: 10,
+        section_score: 10,
+        section_time_min: 10,
+        question_types: ["vocabulary_in_context", "multiple_choice"],
+        difficulty_mix: { easy: 0.1, medium: 0.5, hard: 0.4 },
+      },
+      {
+        name: "Short Answer — Critical Response",
+        skill: "reading",
+        cefr: "C1",
+        topic: "responding to a short passage with a 1-3 sentence justification",
+        item_count: 5,
+        section_score: 10,
+        section_time_min: 10,
+        question_types: ["short_answer"],
+        difficulty_mix: { easy: 0.1, medium: 0.5, hard: 0.4 },
       },
     ],
   },
@@ -213,6 +452,17 @@ export function PaperCreatePage() {
     [sections],
   );
 
+  const paperEstimate = useMemo(() => {
+    return sections.reduce(
+      (acc, s) => {
+        // Paper sections skip Blueprint (pre-seeded). Forced 1× revision.
+        const e = estimateTokens({ itemCount: Number(s.item_count) || 1, skipBlueprint: true, revisions: 1 });
+        return { tokens: acc.tokens + e.total_tokens, cost: acc.cost + e.cost_usd };
+      },
+      { tokens: 0, cost: 0 },
+    );
+  }, [sections]);
+
   const toggleCollapse = (index: number) => {
     setCollapsed((current) => ({ ...current, [index]: !current[index] }));
   };
@@ -259,6 +509,11 @@ export function PaperCreatePage() {
         <StatTile label="Total items" value={String(totalItems)} />
         <StatTile label="Total score" value={String(totalScore)} highlight />
         <StatTile label="Time limit" value={timeLimit ? `${timeLimit} min` : "—"} />
+        <StatTile
+          label="Est. tokens"
+          value={formatTokens(paperEstimate.tokens)}
+          sub={`${formatUSD(paperEstimate.cost)} · ${formatTHB(paperEstimate.cost)}`}
+        />
       </div>
 
       <Card>
@@ -677,11 +932,12 @@ function ReviewModal({ name, description, timeLimit, totalScore, totalItems, sec
   );
 }
 
-function StatTile({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function StatTile({ label, value, highlight, sub }: { label: string; value: string; highlight?: boolean; sub?: string }) {
   return (
     <div className={`stat-tile ${highlight ? "highlight" : ""}`}>
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
+      {sub ? <div className="stat-sub muted" style={{ fontSize: 10, marginTop: 2 }}>{sub}</div> : null}
     </div>
   );
 }

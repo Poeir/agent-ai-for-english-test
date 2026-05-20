@@ -1,21 +1,23 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Fragment, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Badge } from "../components/ui/Badge";
 import { Card, CardHeader } from "../components/ui/Card";
 import { ErrorState, LoadingState } from "../components/ui/States";
 import { QuestionRenderer } from "../components/domain/QuestionRenderer";
+import { TokenUsage } from "../components/domain/TokenEstimate";
 import { getJob } from "../services/jobsApi";
 import { getPaper, getPaperItems } from "../services/papersApi";
 import type { JobResponse, Paper, PaperSection, QuestionItem } from "../types/api";
 
-type NodeKey = "blueprint" | "generator" | "distractor" | "judge";
+type NodeKey = "blueprint" | "generator" | "distractor" | "verifier" | "judge";
 type NodeStatus = "waiting" | "running" | "done" | "failed";
 
 const NODES: Array<{ key: NodeKey; title: string }> = [
   { key: "blueprint",  title: "Blueprint" },
   { key: "generator",  title: "Generator" },
   { key: "distractor", title: "Distractor" },
+  { key: "verifier",   title: "Verifier" },
   { key: "judge",      title: "Judge" },
 ];
 
@@ -45,6 +47,7 @@ function deriveNodeStatus(node: NodeKey, job: JobResponse | undefined, section: 
       case "blueprint":  return Boolean(trace?.blueprint);
       case "generator":  return Boolean(trace?.raw_questions?.length) || Boolean(trace?.passage);
       case "distractor": return Boolean(trace?.questions_with_options?.length);
+      case "verifier":   return Boolean(trace?.verifier_results?.length);
       case "judge":      return Boolean(trace?.judge_results?.length);
     }
   })();
@@ -100,6 +103,13 @@ function summaryFor(node: NodeKey, trace: any): string | null {
     case "distractor": {
       const qs = trace.questions_with_options || [];
       return qs.length ? `${qs.length} finalized` : null;
+    }
+    case "verifier": {
+      const rs = trace.verifier_results || [];
+      if (!rs.length) return null;
+      const agree = rs.filter((r: any) => r.agrees === true).length;
+      const skipped = rs.filter((r: any) => r.skipped === true).length;
+      return `${agree}/${rs.length} agree${skipped ? ` · ${skipped} skip` : ""}`;
     }
     case "judge": {
       const rs = trace.judge_results || [];
@@ -187,6 +197,12 @@ function SectionPipelineCard({ section }: { section: PaperSection }) {
         <div className="pipeline-error-banner">⚠ {section.error_message}</div>
       ) : null}
 
+      {trace?.token_usage?.total_tokens ? (
+        <div style={{ marginTop: 10 }}>
+          <TokenUsage usage={trace.token_usage} />
+        </div>
+      ) : null}
+
       {section.passage_content ? (
         <details style={{ marginTop: 10 }}>
           <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--primary)", fontWeight: 600 }}>
@@ -221,6 +237,35 @@ export function PaperDetailPage() {
     queryFn: () => getPaperItems(paperId),
     enabled: Boolean(paperId) && (paper.data?.status === "completed" || paper.data?.status === "partial"),
   });
+
+  const sectionJobIds = paper.data?.sections.map((s) => s.job_id || "").filter(Boolean) ?? [];
+  const sectionJobs = useQueries({
+    queries: sectionJobIds.map((jobId) => ({
+      queryKey: ["paper-section-job", jobId],
+      queryFn: () => getJob(jobId),
+      enabled: Boolean(jobId),
+    })),
+  });
+
+  const aggregateUsage = useMemo(() => {
+    const totals = { input_tokens: 0, output_tokens: 0, total_tokens: 0, calls: 0, by_agent: {} as Record<string, { input_tokens: number; output_tokens: number; calls: number }> };
+    for (const q of sectionJobs) {
+      const usage: any = (q.data?.result as any)?.trace?.token_usage;
+      if (!usage) continue;
+      totals.input_tokens  += usage.input_tokens  || 0;
+      totals.output_tokens += usage.output_tokens || 0;
+      totals.total_tokens  += usage.total_tokens  || 0;
+      totals.calls         += usage.calls         || 0;
+      for (const [agent, v] of Object.entries(usage.by_agent || {}) as Array<[string, any]>) {
+        const acc = totals.by_agent[agent] || { input_tokens: 0, output_tokens: 0, calls: 0 };
+        acc.input_tokens  += v.input_tokens  || 0;
+        acc.output_tokens += v.output_tokens || 0;
+        acc.calls         += v.calls         || 0;
+        totals.by_agent[agent] = acc;
+      }
+    }
+    return totals.total_tokens ? totals : null;
+  }, [sectionJobs]);
 
   if (paper.isLoading) return <LoadingState />;
   if (paper.error) return <ErrorState error={paper.error} />;
@@ -300,6 +345,7 @@ export function PaperDetailPage() {
               {overallPct >= 12 ? `${Math.round(overallPct)}%` : ""}
             </div>
           </div>
+          {aggregateUsage ? <TokenUsage usage={aggregateUsage} /> : null}
         </div>
       </Card>
 

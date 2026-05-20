@@ -34,7 +34,7 @@ async def grade_free_text(
         f"MODEL_ANSWER:\n{model_answer or '(none provided)'}\n\n"
         f"CANDIDATE_RESPONSE:\n{candidate_response}"
     )
-    raw = await complete(system, user)
+    raw = await complete(system, user, agent="grader")
     raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         return json.loads(raw)

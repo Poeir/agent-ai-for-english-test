@@ -9,6 +9,7 @@ import { Field } from "../components/ui/Field";
 import { Badge } from "../components/ui/Badge";
 import { ErrorState } from "../components/ui/States";
 import { PipelineView } from "../components/domain/PipelineView";
+import { TokenEstimate } from "../components/domain/TokenEstimate";
 
 export function SingleQuestionPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -169,6 +170,7 @@ export function SingleQuestionPage() {
                 : "Pick a skill to filter compatible question types, or leave it blank."}
             </div>
           </div>
+          <TokenEstimate itemCount={itemCount} />
           <div className="toolbar" style={{ justifyContent: "flex-end" }}>
             <Button
               variant="primary"

@@ -111,7 +111,7 @@ async def distractor_node(state: PipelineState) -> dict:
     )
 
     try:
-        raw = await complete(system, user)
+        raw = await complete(system, user, agent="distractor")
         raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         items = json.loads(raw)
 

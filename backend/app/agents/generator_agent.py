@@ -141,7 +141,7 @@ async def generator_node(state: PipelineState) -> dict:
     )
 
     try:
-        raw = await complete(system, user)
+        raw = await complete(system, user, agent="generator")
         raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         data = json.loads(raw)
         return {

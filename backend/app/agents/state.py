@@ -11,6 +11,8 @@ class PipelineState(TypedDict):
     raw_questions: Optional[list]
     questions_with_options: Optional[list]
 
+    verifier_results: Optional[list]
+
     judge_results: Optional[list]
     judge_passed: bool
     revision_count: int

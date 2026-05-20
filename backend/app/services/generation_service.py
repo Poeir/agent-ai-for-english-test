@@ -11,6 +11,7 @@ from app.database import AsyncSessionLocal
 from app.models.generation_job import GenerationJob
 from app.models.item import Passage, QuestionItem
 from app.services import job_registry
+from app.utils.llm_client import install_token_bucket
 
 
 async def _update_job(job_id: str, **kwargs):
@@ -103,9 +104,11 @@ def _trace_from_state(state: dict) -> dict:
         "passage": state.get("passage"),
         "raw_questions": state.get("raw_questions"),
         "questions_with_options": state.get("questions_with_options"),
+        "verifier_results": state.get("verifier_results"),
         "judge_results": state.get("judge_results"),
         "revision_count": state.get("revision_count", 0),
         "judge_passed": state.get("judge_passed", False),
+        "token_usage": state.get("token_usage"),
     }
 
 
@@ -125,6 +128,8 @@ async def run_pipeline(job_id: str, requirement: str):
 
     await _update_job(job_id, status="running", started_at=datetime.now(timezone.utc), current_node="run_blueprint")
 
+    token_bucket = install_token_bucket()
+
     initial_state: PipelineState = {
         "raw_requirement": requirement,
         "job_id": job_id,
@@ -132,6 +137,7 @@ async def run_pipeline(job_id: str, requirement: str):
         "passage": None,
         "raw_questions": None,
         "questions_with_options": None,
+        "verifier_results": None,
         "judge_results": None,
         "judge_passed": False,
         "revision_count": 0,
@@ -147,6 +153,7 @@ async def run_pipeline(job_id: str, requirement: str):
             for node_name, partial in chunk.items():
                 if isinstance(partial, dict):
                     accumulated.update(partial)
+                    accumulated["token_usage"] = dict(token_bucket)
                     final_state = accumulated
                     await _write_progress(job_id, node_name, accumulated)
 
@@ -207,6 +214,8 @@ async def run_pipeline_for_blueprint(
 
     await _update_job(job_id, status="running", started_at=datetime.now(timezone.utc), current_node="run_generator")
 
+    token_bucket = install_token_bucket()
+
     initial_state: PipelineState = {
         "raw_requirement": "",
         "job_id": job_id,
@@ -214,6 +223,7 @@ async def run_pipeline_for_blueprint(
         "passage": None,
         "raw_questions": None,
         "questions_with_options": None,
+        "verifier_results": None,
         "judge_results": None,
         "judge_passed": False,
         "revision_count": 0,
@@ -228,6 +238,7 @@ async def run_pipeline_for_blueprint(
             for node_name, partial in chunk.items():
                 if isinstance(partial, dict):
                     accumulated.update(partial)
+                    accumulated["token_usage"] = dict(token_bucket)
                     final_state = accumulated
                     await _write_progress(job_id, node_name, accumulated)
 

@@ -25,7 +25,7 @@ async def blueprint_node(state: PipelineState) -> dict:
     user = f"Convert this requirement into a test blueprint:\n\n{state['raw_requirement']}"
 
     try:
-        raw = await complete(system, user)
+        raw = await complete(system, user, agent="blueprint")
         # Strip markdown code fences if present
         raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         blueprint = json.loads(raw)
