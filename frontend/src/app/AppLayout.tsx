@@ -1,9 +1,9 @@
 import { NavLink, Outlet } from "react-router-dom";
 
 const navItems = [
-  { to: "/questions/new", label: "Single Question" },
-  { to: "/papers/new", label: "Paper Test" },
-  { to: "/jobs", label: "Jobs & Monitoring" },
+  { to: "/questions/new", label: "Quick Generate" },
+  { to: "/papers", label: "Papers" },
+  { to: "/jobs", label: "Monitor" },
 ];
 
 export function AppLayout() {

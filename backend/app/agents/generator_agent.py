@@ -86,9 +86,17 @@ def _format_revision_feedback(state: PipelineState) -> str:
     if not judge_results:
         return ""
 
+    passed = state.get("judge_passed", False)
+    verdict = "passed" if passed else "failed"
+    header = (
+        "## REVISION FEEDBACK (refine using judge feedback below)"
+        if passed
+        else "## REVISION FEEDBACK (previous attempt FAILED — fix every issue below)"
+    )
+
     lines = [
-        "## REVISION FEEDBACK (previous attempt FAILED — fix every issue below)",
-        f"Previous overall verdict: failed (revision attempt #{state.get('revision_count', 0)}).",
+        header,
+        f"Previous overall verdict: {verdict} (revision attempt #{state.get('revision_count', 0)}).",
         "",
     ]
     for r in judge_results:
@@ -102,7 +110,10 @@ def _format_revision_feedback(state: PipelineState) -> str:
         for s in suggestions:
             lines.append(f"    FIX:   {s}")
     lines.append("")
-    lines.append("Rewrite the passage and questions to specifically address every ISSUE above. Do NOT repeat the same mistakes.")
+    if passed:
+        lines.append("All questions already meet the threshold, but apply every FIX above to further polish quality. Keep what already works.")
+    else:
+        lines.append("Rewrite the passage and questions to specifically address every ISSUE above. Do NOT repeat the same mistakes.")
     lines.append("")
     return "\n".join(lines) + "\n"
 

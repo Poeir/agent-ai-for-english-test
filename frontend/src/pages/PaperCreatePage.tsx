@@ -1,11 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/Button";
 import { Card, CardHeader } from "../components/ui/Card";
 import { Field } from "../components/ui/Field";
 import { ErrorState } from "../components/ui/States";
-import { CEFRS, QUESTION_TYPES, SKILLS } from "../data/assessmentOptions";
+import { CEFRS, QUESTION_TYPE_DEFS, SKILLS, TYPE_LABELS } from "../data/assessmentOptions";
 import { createPaper } from "../services/papersApi";
 import type { PaperCreateRequest } from "../types/api";
 
@@ -23,92 +23,707 @@ const defaultSection = (index: number): SectionDraft => ({
   difficulty_mix: { easy: 0.4, medium: 0.4, hard: 0.2 },
 });
 
+interface PaperTemplate {
+  key: string;
+  label: string;
+  description: string;
+  paperName: string;
+  paperDescription?: string;
+  timeLimit: number;
+  sections: SectionDraft[];
+}
+
+const PAPER_TEMPLATES: PaperTemplate[] = [
+  {
+    key: "blank",
+    label: "Blank",
+    description: "Start from a single empty section.",
+    paperName: "English Competency Test",
+    paperDescription: "",
+    timeLimit: 60,
+    sections: [defaultSection(1)],
+  },
+  {
+    key: "b1_competency",
+    label: "B1 Competency Test",
+    description: "Grammar + Reading + Listening + Writing at B1 (~55 min, 80 pts).",
+    paperName: "English Competency Test (B1)",
+    paperDescription: "Balanced B1 paper across grammar, reading, listening, and writing.",
+    timeLimit: 60,
+    sections: [
+      {
+        name: "Grammar & Vocabulary",
+        skill: "grammar",
+        cefr: "B1",
+        topic: null,
+        item_count: 10,
+        section_score: 25,
+        section_time_min: 15,
+        question_types: ["multiple_choice", "fill_blank", "error_identification"],
+        difficulty_mix: { easy: 0.4, medium: 0.4, hard: 0.2 },
+      },
+      {
+        name: "Reading",
+        skill: "reading",
+        cefr: "B1",
+        topic: "workplace communication",
+        item_count: 8,
+        section_score: 20,
+        section_time_min: 15,
+        question_types: ["main_idea", "detail", "inference"],
+        difficulty_mix: { easy: 0.3, medium: 0.5, hard: 0.2 },
+      },
+      {
+        name: "Listening",
+        skill: "listening",
+        cefr: "B1",
+        topic: "office dialogue",
+        item_count: 6,
+        section_score: 15,
+        section_time_min: 10,
+        question_types: ["main_idea", "detail"],
+        difficulty_mix: { easy: 0.4, medium: 0.4, hard: 0.2 },
+      },
+      {
+        name: "Writing",
+        skill: "writing",
+        cefr: "B1",
+        topic: null,
+        item_count: 1,
+        section_score: 20,
+        section_time_min: 15,
+        question_types: ["essay"],
+        difficulty_mix: { easy: 0.4, medium: 0.4, hard: 0.2 },
+      },
+    ],
+  },
+  {
+    key: "cefr_placement",
+    label: "CEFR Placement Test (A2–C2)",
+    description: "Vocabulary → Grammar → Conversation → Reading, A2–C2. 60 items, 60 points, ~60 min. Fully auto-gradable.",
+    paperName: "CEFR-based English Placement Test",
+    paperDescription: "Auto-gradable placement across A2–C2 covering vocabulary, grammar, functional conversation, and reading.",
+    timeLimit: 60,
+    sections: (() => {
+      const levels = ["A2", "B1", "B2", "C1", "C2"];
+      const skillDefs = [
+        {
+          display: "Vocabulary",
+          skill: "vocabulary",
+          topic: "everyday vocabulary, collocations, and word forms" as string | null,
+          question_types: ["multiple_choice", "vocabulary_in_context"],
+          itemsPerLevel: 3,
+          timePerLevel: 3,
+        },
+        {
+          display: "Grammar",
+          skill: "grammar",
+          topic: null as string | null,
+          question_types: ["multiple_choice", "fill_blank", "error_identification"],
+          itemsPerLevel: 3,
+          timePerLevel: 3,
+        },
+        {
+          display: "Conversation",
+          skill: "integrated",
+          topic: "workplace and everyday situations: polite requests, customer service, dialogue completion, best-response choices" as string | null,
+          question_types: ["multiple_choice"],
+          itemsPerLevel: 2,
+          timePerLevel: 2,
+        },
+        {
+          display: "Reading",
+          skill: "reading",
+          topic: "everyday situations, workplace, and short articles" as string | null,
+          question_types: ["main_idea", "detail", "inference", "vocabulary_in_context"],
+          itemsPerLevel: 4,
+          timePerLevel: 4,
+        },
+      ];
+      const out: SectionDraft[] = [];
+      for (const s of skillDefs) {
+        for (const lvl of levels) {
+          out.push({
+            name: `${s.display} ${lvl}`,
+            skill: s.skill,
+            cefr: lvl,
+            topic: s.topic,
+            item_count: s.itemsPerLevel,
+            section_score: s.itemsPerLevel,
+            section_time_min: s.timePerLevel,
+            question_types: s.question_types,
+            difficulty_mix: { easy: 0.25, medium: 0.5, hard: 0.25 },
+          });
+        }
+      }
+      return out;
+    })(),
+  },
+];
+
+const cloneSections = (sections: SectionDraft[]): SectionDraft[] =>
+  sections.map((s) => ({
+    ...s,
+    question_types: [...s.question_types],
+    difficulty_mix: s.difficulty_mix ? { ...s.difficulty_mix } : undefined,
+  }));
+
 export function PaperCreatePage() {
   const [name, setName] = useState("English Competency Test");
   const [description, setDescription] = useState("");
   const [timeLimit, setTimeLimit] = useState(60);
   const [sections, setSections] = useState<SectionDraft[]>([defaultSection(1)]);
-  const mutation = useMutation({ mutationFn: createPaper });
+  const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
+  const [activeTemplate, setActiveTemplate] = useState<string>("blank");
+  const [showReview, setShowReview] = useState(false);
+  const mutation = useMutation({
+    mutationFn: createPaper,
+    onSuccess: () => setShowReview(false),
+  });
+
+  const submitPaper = () => {
+    mutation.mutate({
+      name,
+      description: description || null,
+      time_limit_min: timeLimit || null,
+      total_score: totalScore,
+      sections,
+    });
+  };
+
+  const applyTemplate = (template: PaperTemplate) => {
+    setActiveTemplate(template.key);
+    setName(template.paperName);
+    setDescription(template.paperDescription || "");
+    setTimeLimit(template.timeLimit);
+    setSections(cloneSections(template.sections));
+    setCollapsed({});
+  };
 
   const updateSection = (index: number, patch: Partial<SectionDraft>) => {
     setSections((current) => current.map((section, idx) => idx === index ? { ...section, ...patch } : section));
   };
 
-  const totalScore = sections.reduce((sum, section) => sum + Number(section.section_score || 0), 0);
+  const totalScore = useMemo(
+    () => sections.reduce((sum, s) => sum + Number(s.section_score || 0), 0),
+    [sections],
+  );
+  const totalItems = useMemo(
+    () => sections.reduce((sum, s) => sum + Number(s.item_count || 0), 0),
+    [sections],
+  );
+
+  const toggleCollapse = (index: number) => {
+    setCollapsed((current) => ({ ...current, [index]: !current[index] }));
+  };
+
+  const selectSkill = (index: number, nextSkill: string) => {
+    const allowed = new Set(
+      QUESTION_TYPE_DEFS.filter((q) => q.skills.includes(nextSkill)).map((q) => q.key),
+    );
+    const filteredTypes = sections[index].question_types.filter((t) => allowed.has(t));
+    updateSection(index, {
+      skill: nextSkill,
+      question_types: filteredTypes.length ? filteredTypes : Array.from(allowed).slice(0, 1),
+    });
+  };
+
+  const toggleQuestionType = (index: number, key: string) => {
+    const current = sections[index].question_types;
+    const next = current.includes(key)
+      ? current.filter((item) => item !== key)
+      : [...current, key];
+    updateSection(index, { question_types: next });
+  };
+
+  const updateMix = (index: number, key: "easy" | "medium" | "hard", value: number) => {
+    const current = sections[index].difficulty_mix || { easy: 0, medium: 0, hard: 0 };
+    updateSection(index, { difficulty_mix: { ...current, [key]: value } });
+  };
 
   return (
     <div className="stack">
       <header className="page-header">
         <div>
-          <h1 className="page-title">Paper Test</h1>
-          <p className="page-subtitle">Create a structured test paper with multiple sections and background generation jobs.</p>
+          <h1 className="page-title">Create Paper</h1>
+          <p className="page-subtitle">Compose a structured multi-section paper. Each section runs as its own background generation job.</p>
         </div>
-        <Link className="btn" to="/papers">View papers</Link>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link className="btn" to="/papers">View papers</Link>
+        </div>
       </header>
-      <Card>
-        <CardHeader title="Paper Details" />
-        <div className="card-body stack">
-          <div className="grid-3">
-            <Field label="Paper name"><input value={name} onChange={(event) => setName(event.target.value)} /></Field>
-            <Field label="Time limit (min)"><input type="number" value={timeLimit} onChange={(event) => setTimeLimit(Number(event.target.value) || 0)} /></Field>
-            <Field label="Total score"><input value={totalScore} readOnly /></Field>
-          </div>
-          <Field label="Description"><input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional" /></Field>
-        </div>
-      </Card>
+
+      {/* Summary stat bar */}
+      <div className="paper-stats">
+        <StatTile label="Sections" value={String(sections.length)} />
+        <StatTile label="Total items" value={String(totalItems)} />
+        <StatTile label="Total score" value={String(totalScore)} highlight />
+        <StatTile label="Time limit" value={timeLimit ? `${timeLimit} min` : "—"} />
+      </div>
+
       <Card>
         <CardHeader
-          title="Sections"
-          actions={<Button onClick={() => setSections((current) => [...current, defaultSection(current.length + 1)])}>Add section</Button>}
+          title="Templates"
+          description="Quick-start from a curated preset. Picking a template replaces all current sections."
         />
-        <div className="card-body stack">
-          {sections.map((section, index) => (
-            <div className="question-card stack" key={index}>
-              <div className="toolbar" style={{ justifyContent: "space-between" }}>
-                <strong>{section.name}</strong>
-                <Button onClick={() => setSections((current) => current.filter((_, idx) => idx !== index))} disabled={sections.length === 1}>Remove</Button>
-              </div>
-              <div className="grid-3">
-                <Field label="Name"><input value={section.name} onChange={(event) => updateSection(index, { name: event.target.value })} /></Field>
-                <Field label="Skill"><select value={section.skill} onChange={(event) => updateSection(index, { skill: event.target.value })}>{SKILLS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></Field>
-                <Field label="CEFR"><select value={section.cefr} onChange={(event) => updateSection(index, { cefr: event.target.value })}>{CEFRS.map((item) => <option key={item}>{item}</option>)}</select></Field>
-              </div>
-              <div className="grid-3">
-                <Field label="Items"><input type="number" value={section.item_count} onChange={(event) => updateSection(index, { item_count: Number(event.target.value) || 1 })} /></Field>
-                <Field label="Score"><input type="number" value={section.section_score} onChange={(event) => updateSection(index, { section_score: Number(event.target.value) || 1 })} /></Field>
-                <Field label="Time (min)"><input type="number" value={section.section_time_min || ""} onChange={(event) => updateSection(index, { section_time_min: Number(event.target.value) || null })} /></Field>
-              </div>
-              <Field label="Question types">
-                <div className="segmented">
-                  {QUESTION_TYPES.map((type) => (
-                    <button
-                      type="button"
-                      key={type}
-                      className={`chip ${section.question_types.includes(type) ? "active" : ""}`}
-                      onClick={() => updateSection(index, {
-                        question_types: section.question_types.includes(type)
-                          ? section.question_types.filter((item) => item !== type)
-                          : [...section.question_types, type],
-                      })}
-                    >
-                      {type}
-                    </button>
-                  ))}
+        <div className="card-body">
+          <div className="template-grid">
+            {PAPER_TEMPLATES.map((template) => (
+              <button
+                type="button"
+                key={template.key}
+                className={`template-card ${activeTemplate === template.key ? "selected" : ""}`}
+                onClick={() => applyTemplate(template)}
+              >
+                <div className="template-card-head">
+                  <strong>{template.label}</strong>
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    {template.sections.length} section{template.sections.length === 1 ? "" : "s"}
+                  </span>
                 </div>
-              </Field>
-            </div>
-          ))}
-          <Button
-            variant="primary"
-            disabled={mutation.isPending}
-            onClick={() => mutation.mutate({ name, description: description || null, time_limit_min: timeLimit || null, total_score: totalScore, sections })}
-          >
-            {mutation.isPending ? "Creating..." : "Create paper"}
-          </Button>
-          {mutation.error ? <ErrorState error={mutation.error} /> : null}
-          {mutation.data ? <div className="card-body"><Link className="btn primary" to={`/papers/${mutation.data.id}`}>Open created paper</Link></div> : null}
+                <div className="template-card-desc">{template.description}</div>
+              </button>
+            ))}
+          </div>
         </div>
       </Card>
+
+      <Card>
+        <CardHeader title="Paper Details" description="Top-level metadata shown to candidates when they take this paper." />
+        <div className="card-body stack">
+          <div className="grid-2">
+            <Field label="Paper name">
+              <input value={name} onChange={(event) => setName(event.target.value)} />
+            </Field>
+            <Field label="Time limit (minutes)">
+              <input type="number" min={0} value={timeLimit} onChange={(event) => setTimeLimit(Number(event.target.value) || 0)} />
+            </Field>
+          </div>
+          <Field label="Description">
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Optional summary shown to candidates."
+              rows={2}
+            />
+          </Field>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title={`Sections (${sections.length})`}
+          description="Each section is generated independently in parallel. A failure in one section won't fail the whole paper."
+          actions={
+            <Button onClick={() => setSections((current) => [...current, defaultSection(current.length + 1)])}>
+              + Add section
+            </Button>
+          }
+        />
+        <div className="card-body stack">
+          {sections.map((section, index) => {
+            const isCollapsed = collapsed[index];
+            const compatibleTypes = QUESTION_TYPE_DEFS.filter((q) => q.skills.includes(section.skill));
+            const mix = section.difficulty_mix || { easy: 0, medium: 0, hard: 0 };
+            const mixTotal = mix.easy + mix.medium + mix.hard;
+            const mixOk = Math.abs(mixTotal - 1) < 0.01;
+
+            return (
+              <div className="section-card" key={index}>
+                <div className="section-card-head">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span className="section-index">{index + 1}</span>
+                    <input
+                      className="section-name-input"
+                      value={section.name}
+                      onChange={(event) => updateSection(index, { name: event.target.value })}
+                    />
+                    <span className="badge">{section.skill}</span>
+                    <span className="badge">{section.cefr}</span>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {section.item_count} items · {section.section_score} pts
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button type="button" className="btn" onClick={() => toggleCollapse(index)}>
+                      {isCollapsed ? "Expand" : "Collapse"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn danger"
+                      onClick={() => setSections((current) => current.filter((_, idx) => idx !== index))}
+                      disabled={sections.length === 1}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+
+                {isCollapsed ? null : (
+                  <div className="section-card-body stack">
+                    {/* Skill picker */}
+                    <div>
+                      <label className="field-label">Skill</label>
+                      <div className="segmented">
+                        {SKILLS.map((s) => (
+                          <button
+                            type="button"
+                            key={s.key}
+                            className={`skill-pill ${section.skill === s.key ? "selected" : ""}`}
+                            onClick={() => selectSkill(index, s.key)}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* CEFR picker */}
+                    <div>
+                      <label className="field-label">CEFR level</label>
+                      <div className="segmented">
+                        {CEFRS.map((level) => (
+                          <button
+                            type="button"
+                            key={level}
+                            className={`chip ${section.cefr === level ? "active" : ""}`}
+                            onClick={() => updateSection(index, { cefr: level })}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Numeric fields */}
+                    <div className="grid-3">
+                      <Field label="Items">
+                        <input
+                          type="number"
+                          min={1}
+                          value={section.item_count}
+                          onChange={(event) => updateSection(index, { item_count: Number(event.target.value) || 1 })}
+                        />
+                      </Field>
+                      <Field label="Section score">
+                        <input
+                          type="number"
+                          min={1}
+                          value={section.section_score}
+                          onChange={(event) => updateSection(index, { section_score: Number(event.target.value) || 1 })}
+                        />
+                      </Field>
+                      <Field label="Time (min, optional)">
+                        <input
+                          type="number"
+                          min={0}
+                          value={section.section_time_min || ""}
+                          onChange={(event) => updateSection(index, { section_time_min: Number(event.target.value) || null })}
+                          placeholder="Auto"
+                        />
+                      </Field>
+                    </div>
+
+                    <Field label="Topic (optional)">
+                      <input
+                        value={section.topic || ""}
+                        onChange={(event) => updateSection(index, { topic: event.target.value || null })}
+                        placeholder="e.g. workplace communication, environmental science"
+                      />
+                    </Field>
+
+                    {/* Question types */}
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <label className="field-label" style={{ margin: 0 }}>
+                          Question types <span className="muted" style={{ fontWeight: 400 }}>· compatible with "{section.skill}"</span>
+                        </label>
+                        {section.question_types.length ? (
+                          <button
+                            type="button"
+                            className="btn"
+                            style={{ fontSize: 11, padding: "4px 8px" }}
+                            onClick={() => updateSection(index, { question_types: [] })}
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="qtype-grid">
+                        {compatibleTypes.map((q) => {
+                          const selected = section.question_types.includes(q.key);
+                          return (
+                            <label key={q.key} className={`qtype-card ${selected ? "selected" : ""}`}>
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => toggleQuestionType(index, q.key)}
+                              />
+                              <span className="qtype-label">{q.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {!section.question_types.length ? (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 6, color: "var(--danger)" }}>
+                          Pick at least one question type.
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {/* Difficulty mix */}
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <label className="field-label" style={{ margin: 0 }}>Difficulty mix</label>
+                        <span className={`muted ${mixOk ? "" : "mix-warn"}`} style={{ fontSize: 11 }}>
+                          Sum: {mixTotal.toFixed(2)} {mixOk ? "✓" : "(should be 1.00)"}
+                        </span>
+                      </div>
+                      <div className="grid-3">
+                        <MixSlider
+                          label="Easy"
+                          value={mix.easy}
+                          onChange={(v) => updateMix(index, "easy", v)}
+                          color="#16a34a"
+                        />
+                        <MixSlider
+                          label="Medium"
+                          value={mix.medium}
+                          onChange={(v) => updateMix(index, "medium", v)}
+                          color="#d97706"
+                        />
+                        <MixSlider
+                          label="Hard"
+                          value={mix.hard}
+                          onChange={(v) => updateMix(index, "hard", v)}
+                          color="#dc2626"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Sticky action footer */}
+      <div className="paper-actions">
+        <div className="muted" style={{ fontSize: 13 }}>
+          {sections.length} section{sections.length === 1 ? "" : "s"} · {totalItems} items · {totalScore} pts total
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {mutation.data ? (
+            <Link className="btn" to={`/papers/${mutation.data.id}`}>Open created paper →</Link>
+          ) : null}
+          <Button
+            variant="primary"
+            disabled={!sections.length || sections.some((s) => !s.question_types.length)}
+            onClick={() => setShowReview(true)}
+          >
+            Create paper
+          </Button>
+        </div>
+      </div>
+
+      {showReview ? (
+        <ReviewModal
+          name={name}
+          description={description}
+          timeLimit={timeLimit}
+          totalScore={totalScore}
+          totalItems={totalItems}
+          sections={sections}
+          submitting={mutation.isPending}
+          error={mutation.error}
+          onCancel={() => mutation.isPending ? null : setShowReview(false)}
+          onConfirm={submitPaper}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+interface ReviewModalProps {
+  name: string;
+  description: string;
+  timeLimit: number;
+  totalScore: number;
+  totalItems: number;
+  sections: SectionDraft[];
+  submitting: boolean;
+  error: unknown;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+function ReviewModal({ name, description, timeLimit, totalScore, totalItems, sections, submitting, error, onCancel, onConfirm }: ReviewModalProps) {
+  const totalTime = sections.reduce((s, x) => s + Number(x.section_time_min || 0), 0);
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-shell" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h2 className="modal-title">Review Paper</h2>
+            <p className="modal-sub muted">Confirm the configuration before creating the paper. Each section will start as a background generation job.</p>
+          </div>
+          <button type="button" className="btn" onClick={onCancel} disabled={submitting} aria-label="Close">✕</button>
+        </div>
+
+        <div className="modal-body stack">
+          <div className="summary-meta">
+            <div>
+              <div className="summary-paper-name">{name || <span className="muted">(untitled paper)</span>}</div>
+              {description ? <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>{description}</div> : null}
+            </div>
+            <div className="summary-meta-stats">
+              <span><strong>{sections.length}</strong> sections</span>
+              <span>·</span>
+              <span><strong>{totalItems}</strong> items</span>
+              <span>·</span>
+              <span><strong>{totalScore}</strong> pts</span>
+              <span>·</span>
+              <span><strong>{timeLimit || "—"}</strong> min</span>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table className="table summary-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 32 }}>#</th>
+                  <th>Section</th>
+                  <th>Skill</th>
+                  <th>CEFR</th>
+                  <th style={{ textAlign: "right" }}>Items</th>
+                  <th style={{ textAlign: "right" }}>Score</th>
+                  <th style={{ textAlign: "right" }}>Time</th>
+                  <th>Question types</th>
+                  <th>Difficulty mix</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sections.map((section, index) => {
+                  const mix = section.difficulty_mix || { easy: 0, medium: 0, hard: 0 };
+                  const mixTotal = mix.easy + mix.medium + mix.hard;
+                  const mixOk = Math.abs(mixTotal - 1) < 0.01;
+                  return (
+                    <tr key={index}>
+                      <td className="muted">{index + 1}</td>
+                      <td>
+                        <strong>{section.name}</strong>
+                        {section.topic ? (
+                          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Topic: {section.topic}</div>
+                        ) : null}
+                      </td>
+                      <td><span className="badge">{section.skill}</span></td>
+                      <td><span className="badge">{section.cefr}</span></td>
+                      <td style={{ textAlign: "right" }}>{section.item_count}</td>
+                      <td style={{ textAlign: "right" }}>{section.section_score}</td>
+                      <td style={{ textAlign: "right" }}>{section.section_time_min || <span className="muted">—</span>}</td>
+                      <td>
+                        {section.question_types.length ? (
+                          <div className="summary-qtype-list">
+                            {section.question_types.map((key) => (
+                              <span key={key} className="chip" style={{ fontSize: 11, padding: "3px 8px" }}>
+                                {TYPE_LABELS[key] || key}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="muted" style={{ color: "var(--danger)" }}>none</span>
+                        )}
+                      </td>
+                      <td>
+                        <MixBar mix={mix} />
+                        {!mixOk ? (
+                          <div className="mix-warn" style={{ fontSize: 11, marginTop: 4 }}>
+                            sum {mixTotal.toFixed(2)}
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={4}><strong>Total</strong></td>
+                  <td style={{ textAlign: "right" }}><strong>{totalItems}</strong></td>
+                  <td style={{ textAlign: "right" }}><strong>{totalScore}</strong></td>
+                  <td style={{ textAlign: "right" }}>
+                    <strong>{totalTime || "—"}</strong>
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {error ? <ErrorState error={error} /> : null}
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </button>
+          <Button variant="primary" disabled={submitting} onClick={onConfirm}>
+            {submitting ? "Creating..." : "Confirm & Create"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatTile({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className={`stat-tile ${highlight ? "highlight" : ""}`}>
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+    </div>
+  );
+}
+
+function MixBar({ mix }: { mix: { easy: number; medium: number; hard: number } }) {
+  const total = mix.easy + mix.medium + mix.hard || 1;
+  const segments = [
+    { key: "easy",   value: mix.easy,   color: "#16a34a" },
+    { key: "medium", value: mix.medium, color: "#d97706" },
+    { key: "hard",   value: mix.hard,   color: "#dc2626" },
+  ];
+  return (
+    <div className="mix-bar" title={`Easy ${(mix.easy*100).toFixed(0)}% / Medium ${(mix.medium*100).toFixed(0)}% / Hard ${(mix.hard*100).toFixed(0)}%`}>
+      {segments.map((seg) => seg.value > 0 ? (
+        <div
+          key={seg.key}
+          className="mix-bar-seg"
+          style={{ width: `${(seg.value / total) * 100}%`, background: seg.color }}
+        >
+          {seg.value >= 0.15 ? `${Math.round((seg.value / total) * 100)}%` : ""}
+        </div>
+      ) : null)}
+    </div>
+  );
+}
+
+function MixSlider({ label, value, onChange, color }: { label: string; value: number; onChange: (v: number) => void; color: string }) {
+  return (
+    <div className="mix-slider">
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+        <span style={{ color, fontWeight: 650 }}>{label}</span>
+        <span className="mono">{(value * 100).toFixed(0)}%</span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        style={{ width: "100%", accentColor: color }}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { JobResponse } from "../../types/api";
 
 type ViewMode = "pretty" | "json";
@@ -8,9 +8,9 @@ type NodeStatus = "waiting" | "running" | "done" | "failed";
 
 const NODES: Array<{ key: NodeKey; title: string; subtitle: string }> = [
   { key: "blueprint",  title: "Blueprint",  subtitle: "Parse the free-text requirement into a structured blueprint." },
-  { key: "generator",  title: "Generator",  subtitle: "Produce the passage (if any) and full question items with options." },
+  { key: "generator",  title: "Generator",  subtitle: "Produce the passage (if any) and full question items with options. On a revision pass, inlines Judge feedback to refine output." },
   { key: "distractor", title: "Distractor", subtitle: "Refine A/B/C/D options for MCQ-shape items; pass-through others." },
-  { key: "judge",      title: "Judge",      subtitle: "Score each question; trigger a revision loop if quality is low." },
+  { key: "judge",      title: "Judge",      subtitle: "Score each question; always feeds suggestions back for one mandatory revision pass (configured via MAX_REVISION_LOOPS)." },
 ];
 
 function nodeStatus(node: NodeKey, job: JobResponse | undefined, trace: any): NodeStatus {
@@ -309,6 +309,11 @@ function JudgePretty({ trace }: { trace: any }) {
         <span className="muted"> · {passCount}/{total} passed</span>
         <span className="muted"> · avg <span style={{ color: scoreColor(parseFloat(avg)), fontWeight: 700 }}>{avg}</span></span>
         <span className="muted"> · revisions {trace?.revision_count ?? 0}</span>
+        {trace?.revision_count > 0 ? (
+          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+            ↻ Scores shown are from the <strong>post-revision</strong> judge pass — issues/suggestions below were fed back to the Generator before re-scoring.
+          </div>
+        ) : null}
       </div>
       {results.map((r, i) => (
         <div key={i} className="question-card" style={{ marginTop: 8 }}>
@@ -365,6 +370,86 @@ export function PipelineView({ job, requirement }: { job: JobResponse | undefine
   const [mode, setMode] = useState<ViewMode>("pretty");
   const [expanded, setExpanded] = useState<Set<NodeKey>>(new Set(["blueprint","generator","distractor","judge"]));
   const trace: any = useMemo(() => (job?.result as any)?.trace || {}, [job]);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  type Pt = { x: number; y: number };
+  type ForwardWireGeo = { key: string; fromKey: NodeKey; toKey: NodeKey; from: Pt; to: Pt; d: string };
+  type ArcGeo = { d: string; from: Pt; to: Pt; labelX: number; labelY: number };
+  const [geo, setGeo] = useState<{
+    w: number;
+    h: number;
+    wires: ForwardWireGeo[];
+    arc: ArcGeo;
+  } | null>(null);
+  const ARC_H = 52;
+
+  useEffect(() => {
+    const compute = () => {
+      const wrap = wrapperRef.current;
+      if (!wrap) return;
+      const wr = wrap.getBoundingClientRect();
+      const rects: Partial<Record<NodeKey, { left: number; right: number; top: number; bottom: number; cx: number; cy: number }>> = {};
+      for (const n of NODES) {
+        const el = wrap.querySelector<HTMLElement>(`[data-node="${n.key}"]`);
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        rects[n.key] = {
+          left: r.left - wr.left,
+          right: r.right - wr.left,
+          top: r.top - wr.top,
+          bottom: r.bottom - wr.top,
+          cx: r.left + r.width / 2 - wr.left,
+          cy: r.top + r.height / 2 - wr.top,
+        };
+      }
+      const ns = rects as Record<NodeKey, NonNullable<typeof rects[NodeKey]>>;
+
+      const wires: ForwardWireGeo[] = [];
+      for (let i = 0; i < NODES.length - 1; i++) {
+        const aK = NODES[i].key, bK = NODES[i + 1].key;
+        const a = ns[aK], b = ns[bK];
+        const y = (a.cy + b.cy) / 2;
+        const from = { x: a.right, y };
+        const to = { x: b.left, y };
+        wires.push({
+          key: `${aK}->${bK}`,
+          fromKey: aK,
+          toKey: bK,
+          from, to,
+          d: `M ${from.x} ${from.y} L ${to.x} ${to.y}`,
+        });
+      }
+
+      // Reverse arc: elliptical half-arc from Judge top → Generator top
+      const judge = ns.judge, gen = ns.generator;
+      const arcFrom = { x: judge.cx, y: judge.top };
+      const arcTo   = { x: gen.cx,   y: gen.top };
+      const rx = Math.abs(arcFrom.x - arcTo.x) / 2;
+      const ry = ARC_H;
+      // Elliptical arc: large=0, sweep=0 → counterclockwise upward bulge from right→left
+      const arcD = `M ${arcFrom.x} ${arcFrom.y} A ${rx} ${ry} 0 0 0 ${arcTo.x} ${arcTo.y}`;
+
+      setGeo({
+        w: wr.width,
+        h: wr.height,
+        wires,
+        arc: {
+          d: arcD,
+          from: arcFrom,
+          to: arcTo,
+          labelX: (arcFrom.x + arcTo.x) / 2,
+          labelY: Math.min(arcFrom.y, arcTo.y) - ARC_H + 6,
+        },
+      });
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    if (wrapperRef.current) ro.observe(wrapperRef.current);
+    window.addEventListener("resize", compute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", compute);
+    };
+  }, [job]);
 
   const statuses: Record<NodeKey, NodeStatus> = {
     blueprint:  nodeStatus("blueprint", job, trace),
@@ -424,25 +509,133 @@ export function PipelineView({ job, requirement }: { job: JobResponse | undefine
 
   return (
     <div className="stack" style={{ gap: 12 }}>
-      {/* === Flow diagram === */}
-      <div className="pipeline-flow">
-        {NODES.map((n, i) => {
-          const status = statuses[n.key];
-          const summary = summaryFor(n.key, trace);
-          const arrowActive = statuses[n.key] === "done" || statuses[n.key] === "running";
-          return (
-            <FlowSegment
-              key={n.key}
-              index={i}
-              node={n}
-              status={status}
-              summary={summary}
-              showArrow={i < NODES.length - 1}
-              arrowActive={arrowActive}
-            />
-          );
-        })}
-      </div>
+      {/* === Flow diagram with wired connections === */}
+      {(() => {
+        const STATE_COLOR = { idle: "#cbd5e1", transmitting: "#2563eb", completed: "#16a34a" } as const;
+        type WireState = keyof typeof STATE_COLOR;
+
+        const wireState = (toKey: NodeKey): WireState => {
+          const s = statuses[toKey];
+          if (s === "running") return "transmitting";
+          if (s === "done") return "completed";
+          return "idle";
+        };
+
+        const revisionCount: number = trace?.revision_count ?? 0;
+        const arcState: WireState =
+          revisionCount === 0 ? "idle"
+          : job?.status === "running" ? "transmitting"
+          : "completed";
+        const arcColor = STATE_COLOR[arcState];
+
+        return (
+          <div ref={wrapperRef} style={{ position: "relative", paddingTop: ARC_H + 14 }}>
+            {geo ? (
+              <svg
+                width={geo.w}
+                height={geo.h}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  overflow: "visible",
+                  pointerEvents: "none",
+                  zIndex: 2,
+                }}
+              >
+                {/* Forward wires */}
+                {geo.wires.map((w) => {
+                  const state = wireState(w.toKey);
+                  const color = STATE_COLOR[state];
+                  return (
+                    <g key={w.key}>
+                      <path
+                        d={w.d}
+                        stroke={color}
+                        strokeWidth={2.25}
+                        fill="none"
+                        strokeLinecap="round"
+                      />
+                      <circle cx={w.from.x} cy={w.from.y} r={3.5} fill={color} stroke="#fff" strokeWidth={1.5} />
+                      <circle cx={w.to.x}   cy={w.to.y}   r={3.5} fill={color} stroke="#fff" strokeWidth={1.5} />
+                      {state === "transmitting" ? (
+                        <circle r={3.2} fill="#fff" stroke={color} strokeWidth={1.8}>
+                          <animateMotion dur="1.1s" repeatCount="indefinite" path={w.d} />
+                        </circle>
+                      ) : null}
+                    </g>
+                  );
+                })}
+
+                {/* Reverse arc (revise loop) */}
+                <g>
+                  <path
+                    d={geo.arc.d}
+                    stroke={arcColor}
+                    strokeWidth={2.25}
+                    fill="none"
+                    strokeDasharray="5 4"
+                    strokeLinecap="round"
+                  />
+                  <circle cx={geo.arc.from.x} cy={geo.arc.from.y} r={3.5} fill={arcColor} stroke="#fff" strokeWidth={1.5} />
+                  <circle cx={geo.arc.to.x}   cy={geo.arc.to.y}   r={3.5} fill={arcColor} stroke="#fff" strokeWidth={1.5} />
+                  {arcState === "transmitting" ? (
+                    <circle r={3.2} fill="#fff" stroke={arcColor} strokeWidth={1.8}>
+                      <animateMotion dur="1.4s" repeatCount="indefinite" path={geo.arc.d} />
+                    </circle>
+                  ) : null}
+                </g>
+              </svg>
+            ) : null}
+
+            {/* Revise chip (positioned over the arc peak) */}
+            {geo ? (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: geo.arc.labelX,
+                  transform: "translateX(-50%)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: arcColor,
+                  background: "#fff",
+                  border: `1.5px solid ${arcColor}`,
+                  borderRadius: 999,
+                  padding: "3px 12px 3px 8px",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                  zIndex: 3,
+                }}
+                title="Pipeline always feeds Judge feedback back to Generator for one revision pass (MAX_REVISION_LOOPS)."
+              >
+                <LoopIcon color={arcColor} size={13} />
+                <span>Revise loop {revisionCount > 0 ? `· fired ${revisionCount}×` : "· forced 1×"}</span>
+              </div>
+            ) : null}
+
+            <div className="pipeline-flow">
+              {NODES.map((n, i) => {
+                const status = statuses[n.key];
+                const summary = summaryFor(n.key, trace);
+                return (
+                  <FlowSegment
+                    key={n.key}
+                    index={i}
+                    node={n}
+                    status={status}
+                    summary={summary}
+                    showArrow={i < NODES.length - 1}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* === View mode toggle === */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -498,19 +691,33 @@ export function PipelineView({ job, requirement }: { job: JobResponse | undefine
   );
 }
 
+function LoopIcon({ color, size = 14 }: { color: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden>
+      <path
+        d="M 13.5 5 A 5.5 5.5 0 1 0 14 9.5"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        fill="none"
+      />
+      <polygon points="10,1 14.2,4.5 9.6,5.6" fill={color} />
+    </svg>
+  );
+}
+
 function FlowSegment({
-  index, node, status, summary, showArrow, arrowActive,
+  index, node, status, summary, showArrow,
 }: {
   index: number;
   node: { key: NodeKey; title: string; subtitle: string };
   status: NodeStatus;
   summary: string | null;
   showArrow: boolean;
-  arrowActive: boolean;
 }) {
   return (
     <>
-      <div className={`flow-node ${status}`}>
+      <div className={`flow-node ${status}`} data-node={node.key}>
         <span className="flow-idx">Node {index + 1}</span>
         <span className="flow-name">{node.title}</span>
         <span className="flow-status">
@@ -519,7 +726,7 @@ function FlowSegment({
         </span>
         {summary ? <div className="flow-meta">{summary}</div> : null}
       </div>
-      {showArrow ? <span className={`flow-arrow ${arrowActive ? "active" : ""}`}>→</span> : null}
+      {showArrow ? <span className="flow-arrow" aria-hidden /> : null}
     </>
   );
 }

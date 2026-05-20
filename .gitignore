@@ -53,3 +53,7 @@ venv/
 
 # Poetry
 poetry.lock
+
+#Vite
+dist/
+

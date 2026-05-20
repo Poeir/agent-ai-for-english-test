@@ -74,8 +74,8 @@ export function SingleQuestionPage() {
     <div className="stack">
       <header className="page-header">
         <div>
-          <h1 className="page-title">Single Question</h1>
-          <p className="page-subtitle">Generate one focused set of CEFR-aligned English test items and inspect the pipeline.</p>
+          <h1 className="page-title">Quick Generate</h1>
+          <p className="page-subtitle">Generate a focused set of CEFR-aligned English test items and inspect the pipeline in real time.</p>
         </div>
       </header>
 
