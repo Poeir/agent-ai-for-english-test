@@ -32,6 +32,7 @@ def _to_response(
         passage_content = (passages_map or {}).get(s.passage_id) if s.passage_id else None
         sections.append(PaperSectionResponse(
             id=s.id, name=s.name, skill=s.skill, cefr=s.cefr, topic=s.topic,
+            passage_length=s.passage_length,
             item_count=s.item_count, section_score=s.section_score, section_time_min=s.section_time_min,
             status=s.status, job_id=s.job_id, error_message=s.error_message,
             passage_id=s.passage_id, passage_content=passage_content, item_ids=ids,

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     judge_pass_threshold: float = 7.0
     max_revision_loops: int = 1
     cefr_mastery_threshold: float = 0.7
+    llm_json_repair_enabled: bool = False
 
 
 settings = Settings()

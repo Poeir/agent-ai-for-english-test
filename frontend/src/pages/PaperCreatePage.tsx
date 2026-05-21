@@ -12,11 +12,22 @@ import { estimateTokens, formatTokens, formatUSD, formatTHB } from "../utils/tok
 
 type SectionDraft = PaperCreateRequest["sections"][number];
 
+const SOURCE_TEXT_SKILLS = new Set(["reading", "listening", "conversation", "integrated"]);
+
+const PASSAGE_LENGTH_OPTIONS = [
+  { value: "", label: "Default source length" },
+  { value: "120-160 words", label: "Short passage (120-160 words)" },
+  { value: "250-350 words", label: "Medium article (250-350 words)" },
+  { value: "700-900 words", label: "Long article (700-900 words)" },
+  { value: "1000-1200 words", label: "Extended article (1000-1200 words)" },
+];
+
 const defaultSection = (index: number): SectionDraft => ({
   name: `Section ${index}`,
   skill: "grammar",
   cefr: "B1",
   topic: null,
+  passage_length: null,
   item_count: 5,
   section_score: 10,
   section_time_min: null,
@@ -688,9 +699,11 @@ export function PaperCreatePage() {
       QUESTION_TYPE_DEFS.filter((q) => q.skills.includes(nextSkill)).map((q) => q.key),
     );
     const filteredTypes = sections[index].question_types.filter((t) => allowed.has(t));
+    const usesSourceText = SOURCE_TEXT_SKILLS.has(nextSkill);
     updateSection(index, {
       skill: nextSkill,
       question_types: filteredTypes.length ? filteredTypes : Array.from(allowed).slice(0, 1),
+      passage_length: usesSourceText ? sections[index].passage_length || null : null,
     });
   };
 
@@ -798,6 +811,7 @@ export function PaperCreatePage() {
             const mix = section.difficulty_mix || { easy: 0, medium: 0, hard: 0 };
             const mixTotal = mix.easy + mix.medium + mix.hard;
             const mixOk = Math.abs(mixTotal - 1) < 0.01;
+            const canUseSourceText = SOURCE_TEXT_SKILLS.has(section.skill);
 
             return (
               <div className="section-card" key={index}>
@@ -902,6 +916,21 @@ export function PaperCreatePage() {
                         placeholder="e.g. workplace communication, environmental science"
                       />
                     </Field>
+
+                    {canUseSourceText ? (
+                      <Field label="Source length">
+                        <select
+                          value={section.passage_length || ""}
+                          onChange={(event) => updateSection(index, { passage_length: event.target.value || null })}
+                        >
+                          {PASSAGE_LENGTH_OPTIONS.map((option) => (
+                            <option key={option.value || "default"} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    ) : null}
 
                     {/* Question types */}
                     <div>
@@ -1086,6 +1115,9 @@ function ReviewModal({ name, description, timeLimit, totalScore, totalItems, sec
                         <strong>{section.name}</strong>
                         {section.topic ? (
                           <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Topic: {section.topic}</div>
+                        ) : null}
+                        {section.passage_length ? (
+                          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Source: {section.passage_length}</div>
                         ) : null}
                       </td>
                       <td><span className="badge">{section.skill}</span></td>

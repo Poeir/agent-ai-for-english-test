@@ -11,6 +11,16 @@ import { ErrorState } from "../components/ui/States";
 import { PipelineView } from "../components/domain/PipelineView";
 import { TokenEstimate } from "../components/domain/TokenEstimate";
 
+const SOURCE_TEXT_SKILLS = new Set(["reading", "listening", "conversation", "integrated"]);
+
+const PASSAGE_LENGTH_OPTIONS = [
+  { value: "", label: "Default source length" },
+  { value: "120-160 words", label: "Short passage (120-160 words)" },
+  { value: "250-350 words", label: "Medium article (250-350 words)" },
+  { value: "700-900 words", label: "Long article (700-900 words)" },
+  { value: "1000-1200 words", label: "Extended article (1000-1200 words)" },
+];
+
 export function SingleQuestionPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialJobId = searchParams.get("job") || "";
@@ -21,8 +31,11 @@ export function SingleQuestionPage() {
   const [difficulty, setDifficulty] = useState("");
   const [itemCount, setItemCount] = useState(3);
   const [types, setTypes] = useState<string[]>([]);
+  const [passageLength, setPassageLength] = useState("");
   const [showSkillInfo, setShowSkillInfo] = useState(false);
   const [showTypeInfo, setShowTypeInfo] = useState(false);
+
+  const canUseSourceText = SOURCE_TEXT_SKILLS.has(skill);
 
   const visibleTypes = skill
     ? QUESTION_TYPE_DEFS.filter((q) => q.skills.includes(skill))
@@ -39,6 +52,9 @@ export function SingleQuestionPage() {
     if (newSkill) {
       const allowed = new Set(QUESTION_TYPE_DEFS.filter((q) => q.skills.includes(newSkill)).map((q) => q.key));
       setTypes((current) => current.filter((k) => allowed.has(k)));
+    }
+    if (!SOURCE_TEXT_SKILLS.has(newSkill)) {
+      setPassageLength("");
     }
   }
 
@@ -65,11 +81,12 @@ export function SingleQuestionPage() {
       skill ? `skill = ${skill}` : "",
       cefr ? `CEFR level = ${cefr}` : "",
       difficulty ? `difficulty = ${difficulty}` : "",
+      canUseSourceText && passageLength ? `passage_length = ${passageLength}` : "",
       types.length ? `question_types = [${types.join(", ")}]` : "",
       `item_count = ${itemCount}`,
     ].filter(Boolean);
     return [requirement.trim(), `Constraints: ${constraints.join("; ")}.`].filter(Boolean).join("\n\n");
-  }, [cefr, difficulty, itemCount, requirement, skill, types]);
+  }, [canUseSourceText, cefr, difficulty, itemCount, passageLength, requirement, skill, types]);
 
   return (
     <div className="stack">
@@ -132,6 +149,17 @@ export function SingleQuestionPage() {
               <input type="number" min={1} max={20} value={itemCount} onChange={(event) => setItemCount(Number(event.target.value) || 1)} />
             </Field>
           </div>
+          {canUseSourceText ? (
+            <Field label="Source length">
+              <select value={passageLength} onChange={(event) => setPassageLength(event.target.value)}>
+                {PASSAGE_LENGTH_OPTIONS.map((option) => (
+                  <option key={option.value || "default"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
           <div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

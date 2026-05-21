@@ -51,6 +51,16 @@ export const QUESTION_TYPE_DEFS: QuestionTypeDef[] = [
     skills: ["reading","vocabulary","integrated"] },
   { key: "tone_purpose",         label: "Tone & Purpose",          info: "Identify the author's purpose, tone, or attitude.",
     skills: ["reading","conversation","integrated"] },
+  { key: "rhetorical_purpose",   label: "Rhetorical Purpose",      info: "Explain why the writer includes a detail, example, contrast, or analogy.",
+    skills: ["reading","conversation","integrated"] },
+  { key: "author_attitude",      label: "Author's Attitude",       info: "Infer the writer's stance, caution, approval, skepticism, or emphasis.",
+    skills: ["reading","conversation","integrated"] },
+  { key: "implication",          label: "Implication",             info: "Identify what follows from the passage but is not stated directly.",
+    skills: ["reading","conversation","integrated"] },
+  { key: "analogy_interpretation", label: "Analogy Interpretation", info: "Interpret the purpose or limits of an analogy used in the passage.",
+    skills: ["reading","integrated"] },
+  { key: "organization_logic",   label: "Organization Logic",      info: "Analyze passage structure: contrast, cause-effect, problem-solution, or sequence.",
+    skills: ["reading","integrated"] },
 ];
 
 // Kept for backwards compatibility with PaperCreatePage

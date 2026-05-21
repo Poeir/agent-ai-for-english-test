@@ -53,6 +53,7 @@ export interface PaperSection {
   skill: string;
   cefr: string;
   topic?: string | null;
+  passage_length?: string | null;
   item_count: number;
   section_score: number;
   section_time_min?: number | null;
@@ -86,6 +87,7 @@ export interface PaperCreateRequest {
     skill: string;
     cefr: string;
     topic?: string | null;
+    passage_length?: string | null;
     item_count: number;
     section_score: number;
     section_time_min?: number | null;

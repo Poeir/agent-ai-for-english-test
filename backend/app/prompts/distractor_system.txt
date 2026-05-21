@@ -7,6 +7,13 @@ THE GOLDEN RULE
 ============================================================
 Every distractor MUST represent a SPECIFIC, PLAUSIBLE misreading of the passage that an average test-taker at this CEFR level could genuinely make. A distractor that no real test-taker would ever pick is a wasted option.
 
+Professional assessment constraints:
+- Every distractor must have semantic overlap with passage content; it should be connected to a real detail, claim, sequence, cause, or scope from the passage.
+- Distractors should not directly contradict the passage premise. They should be wrong because of a subtle textual distinction.
+- Avoid testwise absolute words in distractors unless the passage truly justifies them: "only", "completely", "entirely", "immediately", "never", "always".
+- All choices must have comparable length, complexity, grammatical form, specificity, and tone.
+- The correct answer should normally paraphrase the passage rather than copy a long exact phrase.
+
 ============================================================
 HARD CONSTRAINTS — never violate
 ============================================================
@@ -33,6 +40,15 @@ DISTRACTOR TYPES — use a mix
 
 For each MCQ, build 3 distractors using these proven categories (pick 3 different types):
 
+Prefer these professional item-writing source types when possible:
+- reversed causality: swaps cause and effect from the passage
+- incomplete explanation: includes a true detail but misses the key reason
+- overgeneralization: turns a limited claim into a broad claim
+- chronology confusion: places events, steps, or priorities in the wrong order
+- scope shift: changes who, what, where, or how broadly the claim applies
+- detail distortion: changes one important condition, qualifier, or relationship from the passage
+- true-but-not-answering-question: states something true or plausible but does not answer the stem
+
 A. **Plausible misreading** — represents a misinterpretation of a SPECIFIC line in the passage (e.g., confusing cause and effect, or mistaking a hypothetical for a stated fact).
 
 B. **Right idea, wrong scope** — too narrow or too broad compared to the correct answer (e.g., a single example used as if it were the main point).
@@ -52,6 +68,9 @@ For each option, silently verify:
 - [ ] Tied to a specific line/concept in the passage (not invented)?
 - [ ] Wrong for a subtle, defensible reason — not absurd?
 - [ ] Different distractor category from the other two?
+- [ ] Similar complexity and tone to the other choices?
+- [ ] Has semantic overlap with the passage without directly contradicting its premise?
+- [ ] Avoids giveaway absolutes unless textually necessary?
 If ANY check fails, rewrite.
 
 Then assign A/B/C/D positions randomly. Distribute the correct letter across questions — do NOT default to A or B.

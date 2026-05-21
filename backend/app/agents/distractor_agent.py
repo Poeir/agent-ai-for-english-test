@@ -3,6 +3,8 @@ import os
 
 from app.agents.state import PipelineState
 from app.utils.llm_client import LLMError, complete
+from app.utils.json_parser import parse_json_with_repair
+from app.utils.item_quality import rebalance_correct_letters
 
 _SYSTEM_PROMPT: str | None = None
 
@@ -23,6 +25,11 @@ MCQ_TYPES = {
     "inference",
     "vocabulary_in_context",
     "tone_purpose",
+    "rhetorical_purpose",
+    "author_attitude",
+    "implication",
+    "analogy_interpretation",
+    "organization_logic",
     "fill_blank",
     "cloze",
 }
@@ -99,7 +106,7 @@ async def distractor_node(state: PipelineState) -> dict:
     finalized: list = list(raw_questions)  # default: pass everything through
 
     if not mcq_questions:
-        return {"questions_with_options": finalized, "error": None}
+        return {"questions_with_options": rebalance_correct_letters(finalized, seed=state.get("job_id", "")), "error": None}
 
     system = _load_system_prompt()
     revision_block = _format_distractor_feedback(state)
@@ -112,8 +119,11 @@ async def distractor_node(state: PipelineState) -> dict:
 
     try:
         raw = await complete(system, user, agent="distractor")
-        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        items = json.loads(raw)
+        items = await parse_json_with_repair(
+            raw,
+            agent="distractor",
+            expected='[{"stem": "...", "options": {"A": "...", "B": "...", "C": "...", "D": "..."}, "correct_answer": "A"}]',
+        )
 
         if not isinstance(items, list) or len(items) != len(mcq_questions):
             return {"error": f"distractor_error: expected {len(mcq_questions)} items, got {len(items) if isinstance(items, list) else 'non-list'}"}
@@ -132,6 +142,6 @@ async def distractor_node(state: PipelineState) -> dict:
                 item["extras"] = src["extras"]
             finalized[mcq_indices[i]] = item
 
-        return {"questions_with_options": finalized, "error": None}
-    except (LLMError, json.JSONDecodeError) as e:
+        return {"questions_with_options": rebalance_correct_letters(finalized, seed=state.get("job_id", "")), "error": None}
+    except LLMError as e:
         return {"error": f"distractor_error: {e}"}

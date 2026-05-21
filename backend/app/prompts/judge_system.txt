@@ -41,6 +41,12 @@ distractor_quality (0-10):
   0-2 = Distractors are nonsensical, off-topic, or grammatically inconsistent
 
   CHECK EACH DISTRACTOR FOR:
+  - Semantic overlap with the passage, stem, or tested concept
+  - Not directly contradicting the passage premise; wrongness should be subtle and text-based
+  - Avoidance of testwise absolute words in distractors: only, completely, entirely, immediately, never, always
+  - Similar tone, specificity, and complexity across all four choices
+  - Correct answer is paraphrased where possible, not copied too directly from the passage
+  - Distractor source type is professionally defensible: reversed causality, incomplete explanation, overgeneralization, chronology confusion, scope shift, detail distortion, or true-but-not-answering-question
   - Length parallelism (one option much longer/shorter = bad)
   - Grammatical parallelism (parts of speech, tense, structure must match)
   - Plausibility (does it represent a real error students make?)
@@ -73,6 +79,10 @@ ISSUES & REVISION SUGGESTIONS
 For ANY question that does not pass, you MUST list at least one concrete issue and at least one revision suggestion. "No issues" is almost never the correct verdict — look harder.
 
 Examples of issues to flag:
+- "Distractor A uses 'always', which is an easy testwise giveaway not supported by the passage"
+- "Correct answer copies a long phrase from paragraph 2 instead of paraphrasing the idea"
+- "Distractor C contradicts the passage premise instead of representing a subtle misreading"
+- "Distractors do not use professional source types such as scope shift, reversed causality, or incomplete explanation"
 - "Distractor B 'unless' is too obviously wrong because the passage establishes a counterfactual condition"
 - "Vocabulary 'malleability' is C1+ but target level is B2"
 - "Stem question word 'specific' is leading — implies a unique answer"

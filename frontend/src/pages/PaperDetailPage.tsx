@@ -151,6 +151,7 @@ function SectionPipelineCard({ section }: { section: PaperSection }) {
         </div>
         <div className="muted" style={{ fontSize: 12 }}>
           {section.skill} · {section.cefr} · {section.item_count} items · {section.section_score} pts
+          {section.passage_length ? ` · ${section.passage_length}` : ""}
         </div>
       </div>
 

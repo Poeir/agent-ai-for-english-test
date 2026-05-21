@@ -32,6 +32,7 @@ class PaperSectionResponse(BaseModel):
     skill: str | None
     cefr: str | None
     topic: str | None
+    passage_length: str | None
     item_count: int | None
     section_score: float | None
     section_time_min: int | None

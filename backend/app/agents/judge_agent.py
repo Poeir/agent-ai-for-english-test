@@ -4,6 +4,8 @@ import os
 from app.agents.state import PipelineState
 from app.config import settings
 from app.utils.llm_client import LLMError, complete
+from app.utils.json_parser import parse_json_with_repair
+from app.utils.item_quality import apply_local_quality_lint
 
 _SYSTEM_PROMPT: str | None = None
 
@@ -32,11 +34,22 @@ async def judge_node(state: PipelineState) -> dict:
 
     try:
         raw = await complete(system, user, agent="judge")
-        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        judge_results = json.loads(raw)
+        judge_results = await parse_json_with_repair(
+            raw,
+            agent="judge",
+            expected='[{"question_index": 0, "overall_score": 0, "ambiguity_risk": "low", "pass": false, "issues": [], "revision_suggestions": []}]',
+        )
+        if not isinstance(judge_results, list):
+            return {"error": "judge_error: expected a JSON array of per-question results"}
+        judge_results = apply_local_quality_lint(state.get("passage") or "", questions, judge_results)
 
         threshold = settings.judge_pass_threshold
-        all_pass = all(r.get("overall_score", 0) >= threshold and r.get("ambiguity_risk") != "high" for r in judge_results)
+        all_pass = all(
+            r.get("pass", False)
+            and r.get("overall_score", 0) >= threshold
+            and r.get("ambiguity_risk") != "high"
+            for r in judge_results
+        )
         revision_count = state.get("revision_count", 0)
         should_revise = revision_count < settings.max_revision_loops
 
@@ -47,5 +60,5 @@ async def judge_node(state: PipelineState) -> dict:
             "revision_count": revision_count + 1 if should_revise else revision_count,
             "error": None,
         }
-    except (LLMError, json.JSONDecodeError) as e:
+    except LLMError as e:
         return {"error": f"judge_error: {e}"}

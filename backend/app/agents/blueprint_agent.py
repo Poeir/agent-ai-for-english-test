@@ -1,8 +1,8 @@
-import json
 import os
 
 from app.agents.state import PipelineState
 from app.utils.llm_client import LLMError, complete
+from app.utils.json_parser import parse_json_with_repair
 
 _SYSTEM_PROMPT: str | None = None
 
@@ -26,9 +26,11 @@ async def blueprint_node(state: PipelineState) -> dict:
 
     try:
         raw = await complete(system, user, agent="blueprint")
-        # Strip markdown code fences if present
-        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        blueprint = json.loads(raw)
+        blueprint = await parse_json_with_repair(
+            raw,
+            agent="blueprint",
+            expected='{"skill": "...", "cefr": "...", "topic": "...", "passage_length": "...", "question_types": [], "difficulty": "...", "item_count": 1}',
+        )
         return {"blueprint": blueprint, "error": None}
-    except (LLMError, json.JSONDecodeError) as e:
+    except LLMError as e:
         return {"error": f"blueprint_error: {e}"}

@@ -76,6 +76,7 @@ Copy `.env.example` to `.env` and fill in credentials.
 | `JUDGE_PASS_THRESHOLD` | Minimum judge score for generated questions, default `7.0` |
 | `MAX_REVISION_LOOPS` | Maximum judge-triggered revision loops, default `1` |
 | `CEFR_MASTERY_THRESHOLD` | Minimum mastery ratio for CEFR classification, default `0.7` |
+| `LLM_JSON_REPAIR_ENABLED` | Optional fallback LLM call to repair malformed agent JSON after local repair fails, default `false` |
 
 ### 2. Run with Docker Compose
 

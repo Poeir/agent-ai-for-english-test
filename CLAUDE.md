@@ -245,6 +245,7 @@ PostgreSQL with pgvector image in Docker Compose. Current SQLAlchemy models defi
 | `JUDGE_PASS_THRESHOLD` | Minimum judge score for a generated question to pass, default `7.0` |
 | `MAX_REVISION_LOOPS` | Maximum judge-triggered revision loops, default `1` in code |
 | `CEFR_MASTERY_THRESHOLD` | Minimum mastery ratio per CEFR level, default `0.7` |
+| `LLM_JSON_REPAIR_ENABLED` | Optional fallback LLM call to repair malformed agent JSON after local repair fails, default `false` |
 
 When adding or changing configuration, update `app/config.py`, `.env.example`, Docker Compose defaults, README notes, and this file together.
 

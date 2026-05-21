@@ -7,6 +7,7 @@ from app.agents.state import PipelineState
 from app.database import AsyncSessionLocal
 from app.models.example import ExampleItem
 from app.utils.llm_client import LLMError, complete
+from app.utils.json_parser import parse_json_with_repair
 
 _SYSTEM_PROMPT: str | None = None
 MAX_EXAMPLES = 3
@@ -142,12 +143,15 @@ async def generator_node(state: PipelineState) -> dict:
 
     try:
         raw = await complete(system, user, agent="generator")
-        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        data = json.loads(raw)
+        data = await parse_json_with_repair(
+            raw,
+            agent="generator",
+            expected='{"passage": "...", "questions": [{"question_type": "...", "stem": "...", "options": null, "correct_answer": "...", "extras": null, "difficulty_band": "...", "score_weight": 1, "objective": "...", "explanation": "...", "tags": []}]}',
+        )
         return {
             "passage": data.get("passage", ""),
             "raw_questions": data.get("questions", []),
             "error": None,
         }
-    except (LLMError, json.JSONDecodeError) as e:
+    except LLMError as e:
         return {"error": f"generator_error: {e}"}

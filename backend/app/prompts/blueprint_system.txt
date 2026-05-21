@@ -34,6 +34,13 @@ Question Types (pick one or more; must be compatible with the chosen skill):
 - vocabulary_in_context   — meaning of a word as used in the passage
 - tone_purpose            — author's purpose, tone, or attitude
 
+Additional high-level reading/listening question types:
+- rhetorical_purpose      - why the writer includes a detail, example, contrast, or analogy
+- author_attitude         - writer's stance, caution, approval, skepticism, or emphasis
+- implication             - what follows from the passage but is not directly stated
+- analogy_interpretation  - what an analogy means and what its limits are
+- organization_logic      - how the passage is structured (contrast, cause-effect, problem-solution, sequence)
+
 Compatibility rules:
 - writing / speaking → use essay / speaking_prompt (no multiple_choice)
 - grammar → multiple_choice, fill_blank, error_identification, reordering

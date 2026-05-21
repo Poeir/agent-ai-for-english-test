@@ -1,8 +1,8 @@
 """Free-text grader — NOT a graph node. Called directly from scoring_service."""
-import json
 import os
 
 from app.utils.llm_client import LLMError, complete
+from app.utils.json_parser import parse_json_with_repair
 
 _SYSTEM_PROMPT: str | None = None
 
@@ -35,8 +35,8 @@ async def grade_free_text(
         f"CANDIDATE_RESPONSE:\n{candidate_response}"
     )
     raw = await complete(system, user, agent="grader")
-    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise LLMError(f"grader returned invalid JSON: {e}") from e
+    return await parse_json_with_repair(
+        raw,
+        agent="grader",
+        expected='{"task_achievement": 0, "coherence": 0, "lexis": 0, "grammar": 0, "overall_percent": 0, "is_acceptable": false, "feedback": "..."}',
+    )

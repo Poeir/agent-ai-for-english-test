@@ -12,6 +12,8 @@ from app.models.session import SessionGrade, TestSession
 DETERMINISTIC_LETTER_TYPES = {
     "multiple_choice", "main_idea", "detail", "inference",
     "vocabulary_in_context", "tone_purpose", "cloze", "error_identification",
+    "rhetorical_purpose", "author_attitude", "implication",
+    "analogy_interpretation", "organization_logic",
 }
 DETERMINISTIC_FLEX_TYPES = {"fill_blank", "true_false_not_given", "matching", "reordering"}
 FREE_TEXT_TYPES = {"short_answer", "essay"}
