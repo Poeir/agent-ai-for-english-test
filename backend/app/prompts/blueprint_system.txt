@@ -33,6 +33,8 @@ Question Types (pick one or more; must be compatible with the chosen skill):
 - inference               — what can be inferred (reading/listening)
 - vocabulary_in_context   — meaning of a word as used in the passage
 - tone_purpose            — author's purpose, tone, or attitude
+- photo_description       — LISTENING Part 1: pick the spoken sentence that best describes an imagined photo (4 options)
+- question_response       — LISTENING Part 2: pick the best short spoken response to a spoken question (3 options)
 
 Additional high-level reading/listening question types:
 - rhetorical_purpose      - why the writer includes a detail, example, contrast, or analogy
@@ -46,6 +48,7 @@ Compatibility rules:
 - grammar → multiple_choice, fill_blank, error_identification, reordering
 - vocabulary → multiple_choice, fill_blank, vocabulary_in_context
 - reading / listening → any comprehension type (main_idea, detail, inference, multiple_choice, true_false_not_given, matching, short_answer, cloze)
+- listening (Part 1/2 style) → photo_description and/or question_response — these are self-contained items with NO passage
 - integrated → combine compatible types from the two underlying skills
 
 Return ONLY a valid JSON object matching this schema exactly, with no markdown or explanation:

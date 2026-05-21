@@ -112,7 +112,7 @@ run_blueprint -> run_generator -> run_distractor -> run_judge -> [revise] -> run
 Revision is controlled by `settings.max_revision_loops`; the judge sets `should_revise` while `revision_count < max_revision_loops`. With the default of `1`, every successful judge pass still triggers one polish loop.
 
 - `blueprint_agent.py`: Parses a free-text requirement into a structured blueprint. If `state["blueprint"]` is already present, it returns immediately so paper sections can skip the blueprint LLM call.
-- `generator_agent.py`: Generates a passage plus question stems and correct answers from the blueprint. It fetches up to three curated examples from `example_items` and inlines judge feedback on revision passes.
+- `generator_agent.py`: Generates a passage plus question stems and correct answers from the blueprint. It fetches up to three curated examples from `example_items` and inlines judge feedback on revision passes. For `skill = "listening"`, the passage is a TTS-ready transcript: a multi-speaker dialogue (TOEIC Part 3 style) or a single-speaker monologue (TOEIC Part 4 style). When the section's `question_types` are only `photo_description` and/or `question_response` (TOEIC Parts 1-2), the passage is empty and each item is self-contained spoken text.
 - `distractor_agent.py`: Completes A/B/C/D options for MCQ-shaped items that need them and passes through complete or free-text items.
 - `judge_agent.py`: Scores questions on CEFR alignment, distractor quality, grammar naturalness, and ambiguity risk. A question passes when `overall_score >= JUDGE_PASS_THRESHOLD` and `ambiguity_risk != "high"`.
 - `grader_agent.py`: Grades free-text session responses using `prompts/grader_system.txt`.
@@ -175,7 +175,7 @@ The structured paper workflow is implemented in `services/paper_service.py`.
 4. `POST /api/v1/sessions/{id}/answer` saves incremental responses into `test_sessions.responses`.
 5. `POST /api/v1/sessions/{id}/submit` marks the session submitted and schedules `grade_session`.
 6. Objective items are graded deterministically:
-   - Letter answer types: `multiple_choice`, `main_idea`, `detail`, `inference`, `vocabulary_in_context`, `tone_purpose`, `cloze`, `error_identification`
+   - Letter answer types: `multiple_choice`, `main_idea`, `detail`, `inference`, `vocabulary_in_context`, `tone_purpose`, `cloze`, `error_identification`, `photo_description`, `question_response`
    - Flexible deterministic types: `fill_blank`, `true_false_not_given`, `matching`, `reordering`
 7. Free-text types `short_answer` and `essay` use `grader_agent.grade_free_text`.
 8. `speaking_prompt` is recorded with `score_earned=None` and skipped for Phase 1 grading.

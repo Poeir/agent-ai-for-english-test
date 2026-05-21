@@ -467,11 +467,14 @@ function PaperPreviewModal({
 
                 {group.subsections.map((section) => {
                   const secItems = itemsBySection[section.name] || [];
+                  const isListening = (section.skill || "").toLowerCase() === "listening";
                   return (
                     <Fragment key={section.id}>
                       {section.passage_content ? (
                         <div className="preview-passage">
-                          <div className="preview-passage-label">Passage</div>
+                          <div className="preview-passage-label">
+                            {isListening ? "🔊 Audio transcript (for TTS)" : "Passage"}
+                          </div>
                           <div className="preview-passage-text">{section.passage_content}</div>
                         </div>
                       ) : null}
@@ -484,6 +487,7 @@ function PaperPreviewModal({
                             item={it}
                             number={globalNum}
                             showAnswer={showAnswers}
+                            sectionSkill={section.skill}
                           />
                         );
                       })}
@@ -543,13 +547,16 @@ function PaperPreviewModal({
   );
 }
 
-function PreviewQuestion({ item, number, showAnswer }: { item: QuestionItem; number: number; showAnswer: boolean }) {
+function PreviewQuestion({ item, number, showAnswer, sectionSkill }: { item: QuestionItem; number: number; showAnswer: boolean; sectionSkill?: string | null }) {
   const opts = item.options
     ? Object.entries(item.options).filter(([k]) => k !== "_extras" && /^[A-D]$/.test(k))
     : [];
   const isFreeText = ["essay", "short_answer"].includes(item.question_type || "");
   const isFillBlank = item.question_type === "fill_blank";
   const isErrorId = item.question_type === "error_identification";
+  const isPhoto = item.question_type === "photo_description";
+  const isQResp = item.question_type === "question_response";
+  const isListening = (sectionSkill || "").toLowerCase() === "listening";
   const extras: Record<string, any> = ((item.options as any)?._extras) || {};
 
   return (
@@ -560,8 +567,16 @@ function PreviewQuestion({ item, number, showAnswer }: { item: QuestionItem; num
         </div>
       ) : null}
 
+      {isPhoto && (extras.image_prompt || extras.photo_description) ? (
+        <div className="preview-passage" style={{ background: "#fef3c7", borderLeft: "3px solid #d97706" }}>
+          <div className="preview-passage-label">🖼 Image prompt (for image-gen AI — not spoken)</div>
+          <div className="preview-passage-text">{String(extras.image_prompt || extras.photo_description)}</div>
+        </div>
+      ) : null}
+
       <div className="preview-question-stem">
         <span className="preview-question-num">{number}.</span>
+        {isQResp ? <span className="preview-question-type">🔊 spoken question</span> : null}
         <span style={{ whiteSpace: "pre-wrap" }}>{item.stem}</span>
         {showAnswer && item.question_type ? (
           <span className="preview-question-type">{item.question_type}</span>
@@ -570,6 +585,11 @@ function PreviewQuestion({ item, number, showAnswer }: { item: QuestionItem; num
 
       {opts.length ? (
         <div className="preview-options">
+          {(isPhoto || isQResp || (isListening && opts.length <= 4)) ? (
+            <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+              {isPhoto ? "🔊 Spoken options (TTS reads each)" : isQResp ? "🔊 Spoken responses (TTS reads each)" : null}
+            </div>
+          ) : null}
           {opts.map(([k, v]) => {
             const correct = showAnswer && k === item.correct_answer;
             return (

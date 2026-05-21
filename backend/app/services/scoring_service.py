@@ -14,6 +14,7 @@ DETERMINISTIC_LETTER_TYPES = {
     "vocabulary_in_context", "tone_purpose", "cloze", "error_identification",
     "rhetorical_purpose", "author_attitude", "implication",
     "analogy_interpretation", "organization_logic",
+    "photo_description", "question_response",
 }
 DETERMINISTIC_FLEX_TYPES = {"fill_blank", "true_false_not_given", "matching", "reordering"}
 FREE_TEXT_TYPES = {"short_answer", "essay"}
