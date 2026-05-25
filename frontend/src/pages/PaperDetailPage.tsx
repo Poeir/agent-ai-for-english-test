@@ -9,6 +9,7 @@ import { getJob } from "../services/jobsApi";
 import { getPaper, getPaperItems } from "../services/papersApi";
 import type { JobResponse, Paper, PaperSection, QuestionItem } from "../types/api";
 import { getSkillGroup, type SkillGroupMeta, buildSinglePaperPrint, openPrintWindow } from "../utils/paperPrint";
+import { downloadPaperJson } from "../utils/paperJson";
 
 type NodeKey = "blueprint" | "generator" | "distractor" | "judge";
 type NodeStatus = "waiting" | "running" | "done" | "failed";
@@ -278,6 +279,11 @@ export function PaperDetailPage() {
     if (!opened) alert("Popup blocked — please allow popups for this site.");
   };
 
+  const handleExportJson = (includeAnswers: boolean) => {
+    if (!paper.data || !items.data) return;
+    downloadPaperJson(paper.data, items.data, { includeAnswers });
+  };
+
   return (
     <div className="stack">
       <header className="page-header">
@@ -295,6 +301,15 @@ export function PaperDetailPage() {
             title={canExport ? "Preview the formatted test paper" : "Available once generation finishes"}
           >
             👁 View Test
+          </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={!canExport}
+            onClick={() => handleExportJson(true)}
+            title={canExport ? "Download paper data (with answers) as JSON" : "Available once generation finishes"}
+          >
+            ⬇ Export JSON
           </button>
           {/* <button
             type="button"

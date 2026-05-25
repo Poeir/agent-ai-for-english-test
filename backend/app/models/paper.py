@@ -34,7 +34,7 @@ class PaperSection(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     skill: Mapped[str | None] = mapped_column(String(50))
     cefr: Mapped[str | None] = mapped_column(String(5))
-    topic: Mapped[str | None] = mapped_column(String(200))
+    topic: Mapped[str | None] = mapped_column(Text)
     passage_length: Mapped[str | None] = mapped_column(String(50))
     question_types: Mapped[list | None] = mapped_column(JSONB)
     item_count: Mapped[int | None] = mapped_column(Integer)

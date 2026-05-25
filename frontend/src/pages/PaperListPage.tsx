@@ -8,6 +8,9 @@ import { ErrorState, LoadingState } from "../components/ui/States";
 import { getPaperItems, listPapers } from "../services/papersApi";
 import type { Paper, QuestionItem } from "../types/api";
 import { buildSinglePaperPrint, openPrintWindow, type ExportMode } from "../utils/paperPrint";
+import { downloadPaperJson, downloadPapersBundleJson } from "../utils/paperJson";
+
+type ExportFormat = "pdf" | "json" | "json-bundle";
 
 function isReady(status: string | null | undefined) {
   return status === "completed" || status === "partial";
@@ -137,10 +140,16 @@ export function PaperListPage() {
 }
 
 function BulkExportModal({ papers, onClose }: { papers: Paper[]; onClose: () => void }) {
+  const [format, setFormat] = useState<ExportFormat>("pdf");
   const [mode, setMode] = useState<ExportMode>("test");
 
+  const changeFormat = (next: ExportFormat) => {
+    setFormat(next);
+    if (next !== "pdf" && mode === "both") setMode("key");
+  };
+
   const exportMutation = useMutation({
-    mutationFn: async (selectedMode: ExportMode) => {
+    mutationFn: async ({ selectedFormat, selectedMode }: { selectedFormat: ExportFormat; selectedMode: ExportMode }) => {
       // Fetch items for every paper in parallel
       const results = await Promise.all(
         papers.map(async (paper) => {
@@ -148,7 +157,23 @@ function BulkExportModal({ papers, onClose }: { papers: Paper[]; onClose: () => 
           return { paper, items };
         }),
       );
-      // Open ONE window per paper so each becomes its own print/PDF file.
+
+      if (selectedFormat === "json") {
+        // One JSON file per paper. "test" mode strips answers; "key" and "both" keep them.
+        const includeAnswers = selectedMode !== "test";
+        for (const { paper, items } of results) {
+          downloadPaperJson(paper, items, { includeAnswers });
+        }
+        return results;
+      }
+
+      if (selectedFormat === "json-bundle") {
+        const includeAnswers = selectedMode !== "test";
+        downloadPapersBundleJson(results, { includeAnswers });
+        return results;
+      }
+
+      // PDF: open ONE window per paper so each becomes its own print/PDF file.
       // All window.open calls must happen in the same user-gesture tick,
       // otherwise the browser will block subsequent popups.
       const blocked: string[] = [];
@@ -169,8 +194,19 @@ function BulkExportModal({ papers, onClose }: { papers: Paper[]; onClose: () => 
   });
 
   const handleConfirm = () => {
-    exportMutation.mutate(mode);
+    exportMutation.mutate({ selectedFormat: format, selectedMode: mode });
   };
+
+  const confirmLabel = (() => {
+    if (exportMutation.isPending) return "Preparing...";
+    if (format === "pdf") {
+      return `Open ${papers.length} print window${papers.length === 1 ? "" : "s"}`;
+    }
+    if (format === "json-bundle") {
+      return `Download 1 JSON file (${papers.length} paper${papers.length === 1 ? "" : "s"})`;
+    }
+    return `Download ${papers.length} JSON file${papers.length === 1 ? "" : "s"}`;
+  })();
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -179,36 +215,77 @@ function BulkExportModal({ papers, onClose }: { papers: Paper[]; onClose: () => 
           <div>
             <h2 className="modal-title">Export {papers.length} paper{papers.length === 1 ? "" : "s"}</h2>
             <p className="modal-sub muted">
-              Each paper opens as its own print window — save each as a separate PDF.
-              {papers.length > 1 ? " Allow popups when prompted." : ""}
+              {format === "pdf"
+                ? `Each paper opens as its own print window — save each as a separate PDF.${papers.length > 1 ? " Allow popups when prompted." : ""}`
+                : format === "json-bundle"
+                  ? "All papers are bundled into one downloadable .json file."
+                  : "Each paper downloads as its own .json file."}
             </p>
           </div>
           <button type="button" className="btn" onClick={onClose} aria-label="Close" disabled={exportMutation.isPending}>✕</button>
         </div>
 
         <div className="modal-body stack">
-          <div className="export-mode-list">
-            <ExportModeOption
-              value="test"
-              current={mode}
-              onSelect={setMode}
-              label="📄 Test paper only"
-              description="Student-facing test without answers — for printing and distribution."
-            />
-            <ExportModeOption
-              value="key"
-              current={mode}
-              onSelect={setMode}
-              label="🔑 Answer key only"
-              description="Marked test with correct answers, model responses, and answer key summary."
-            />
-            <ExportModeOption
-              value="both"
-              current={mode}
-              onSelect={setMode}
-              label="📄 + 🔑 Test paper + Answer key"
-              description="Both versions in one document — test pages first, then answer key. Convenient for proctors."
-            />
+          <div>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 650, marginBottom: 6 }}>Format</div>
+            <div className="export-mode-list">
+              <ExportFormatOption
+                value="pdf"
+                current={format}
+                onSelect={changeFormat}
+                label="📄 PDF (one window per paper)"
+                description="Open each paper in a print window — Save as PDF from the browser dialog."
+              />
+              <ExportFormatOption
+                value="json"
+                current={format}
+                onSelect={changeFormat}
+                label="🗎 JSON (one file per paper)"
+                description="Structured paper data — useful for re-import, automation, or archival."
+              />
+              <ExportFormatOption
+                value="json-bundle"
+                current={format}
+                onSelect={changeFormat}
+                label="📦 JSON bundle (one file total)"
+                description="All selected papers wrapped into a single .json file."
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 650, marginBottom: 6 }}>
+              {format === "pdf" ? "Content" : "Answers"}
+            </div>
+            <div className="export-mode-list">
+              <ExportModeOption
+                value="test"
+                current={mode}
+                onSelect={setMode}
+                label={format === "pdf" ? "📄 Test paper only" : "🚫 Without answers"}
+                description={format === "pdf"
+                  ? "Student-facing test without answers — for printing and distribution."
+                  : "Strip correct answers, explanations, and judge scores from the export."}
+              />
+              <ExportModeOption
+                value="key"
+                current={mode}
+                onSelect={setMode}
+                label={format === "pdf" ? "🔑 Answer key only" : "🔑 With answers"}
+                description={format === "pdf"
+                  ? "Marked test with correct answers, model responses, and answer key summary."
+                  : "Include correct answers and explanations in the JSON output."}
+              />
+              {format === "pdf" ? (
+                <ExportModeOption
+                  value="both"
+                  current={mode}
+                  onSelect={setMode}
+                  label="📄 + 🔑 Test paper + Answer key"
+                  description="Both versions in one document — test pages first, then answer key. Convenient for proctors."
+                />
+              ) : null}
+            </div>
           </div>
 
           <div className="export-paper-list">
@@ -231,13 +308,38 @@ function BulkExportModal({ papers, onClose }: { papers: Paper[]; onClose: () => 
         <div className="modal-footer">
           <button type="button" className="btn" onClick={onClose} disabled={exportMutation.isPending}>Cancel</button>
           <Button variant="primary" onClick={handleConfirm} disabled={exportMutation.isPending || papers.length === 0}>
-            {exportMutation.isPending
-              ? "Preparing..."
-              : `Open ${papers.length} print window${papers.length === 1 ? "" : "s"}`}
+            {confirmLabel}
           </Button>
         </div>
       </div>
     </div>
+  );
+}
+
+function ExportFormatOption({
+  value, current, onSelect, label, description,
+}: {
+  value: ExportFormat;
+  current: ExportFormat;
+  onSelect: (v: ExportFormat) => void;
+  label: string;
+  description: string;
+}) {
+  const selected = value === current;
+  return (
+    <button
+      type="button"
+      className={`export-mode-card ${selected ? "selected" : ""}`}
+      onClick={() => onSelect(value)}
+    >
+      <div className="export-mode-radio">
+        <span className={`radio-dot ${selected ? "filled" : ""}`} />
+      </div>
+      <div style={{ flex: 1 }}>
+        <div className="export-mode-label">{label}</div>
+        <div className="export-mode-desc">{description}</div>
+      </div>
+    </button>
   );
 }
 

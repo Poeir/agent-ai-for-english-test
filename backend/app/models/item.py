@@ -15,7 +15,7 @@ class Passage(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     word_count: Mapped[int | None] = mapped_column(Integer)
     cefr_level: Mapped[str | None] = mapped_column(String(5))
-    topic: Mapped[str | None] = mapped_column(String(255))
+    topic: Mapped[str | None] = mapped_column(Text)
     skill: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
