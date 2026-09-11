@@ -2,7 +2,7 @@
 // Numbers are calibrated against measured prompt sizes + typical output volumes; expect ±15% accuracy.
 // Used to give the user a pre-flight estimate of cost before running a job.
 
-export type AgentName = "blueprint" | "generator" | "distractor" | "judge";
+export type AgentName = "blueprint" | "generator" | "distractor" | "verifier" | "judge";
 
 export type TokenEstimate = {
   total_tokens: number;
@@ -24,6 +24,16 @@ export type EstimateInput = {
 const DEFAULT_INPUT_PRICE_PER_M = 0.10;
 const DEFAULT_OUTPUT_PRICE_PER_M = 0.40;
 
+// Verifier sub-call sample count (k blind-solver passes per verifier run).
+// Mirrors backend VERIFIER_K_SAMPLES default.
+const VERIFIER_K = 2;
+// Fraction of items expected to skip the multi-answer detector via the
+// unanimous-vote + high-confidence cheap-path.
+const MULTIANSWER_SKIP_RATE = 0.4;
+// Fraction of pipeline runs expected to actually trigger the revision pass,
+// now that judge revises only on failure. Conservative estimate.
+const REVISION_TRIGGER_RATE = 0.5;
+
 export function estimateTokens(
   { itemCount, skipBlueprint = false, revisions = 1 }: EstimateInput,
   prices: { input?: number; output?: number } = {},
@@ -37,22 +47,34 @@ export function estimateTokens(
   // Generator: system + examples + blueprint + (revision feedback when applicable)
   //            output = passage (~800 tokens) + n stems (~100 ea)
   const generatorPass = 2770 + 800 + 100 * n;
-  const generatorRevisePass = generatorPass + 500;          // revision_block adds ~500 input
+  const generatorRevisePass = generatorPass + 700;          // revision_block grows with verifier + judge feedback
 
   // Distractor: input grows per question (~150 each), output ~200 each
   const distractorPass = 1395 + 150 * n + 200 * n;
 
+  // Verifier: k blind-solver calls + multi-answer detector (skipped on confident agreement)
+  // Blind solver per call: ~1000 system + ~800 passage + ~130 per stripped question + ~80 output per q
+  const verifierSolverPass = VERIFIER_K * (1000 + 800 + 130 * n + 80 * n);
+  // Multi-answer detector: 1 call, expected to skip a fraction of items via cheap-path
+  const verifierMultiAnswerPass = (1 - MULTIANSWER_SKIP_RATE) * (600 + 800 + 200 * n + 50 * n);
+  const verifierPass = verifierSolverPass + verifierMultiAnswerPass;
+
   // Judge: ~200 input + ~200 output per question (rubric is dense)
   const judgePass = 1750 + 200 * n + 200 * n;
 
-  const mainPass = generatorPass + distractorPass + judgePass;
-  const revisePass = generatorRevisePass + distractorPass + judgePass;
+  // Effective revision count: judge now revises only on failure, so a fraction of runs
+  // actually trigger the revision pass. Verifier-triggered revisions are also folded in here.
+  const effectiveRevisions = revisions * REVISION_TRIGGER_RATE;
 
-  const totalGenerator   = generatorPass   + revisions * generatorRevisePass;
-  const totalDistractor  = distractorPass  * (1 + revisions);
-  const totalJudge       = judgePass       * (1 + revisions);
+  const mainPass = generatorPass + distractorPass + verifierPass + judgePass;
+  const revisePass = generatorRevisePass + distractorPass + verifierPass + judgePass;
 
-  const total = blueprint + mainPass + revisions * revisePass;
+  const totalGenerator   = generatorPass   + effectiveRevisions * generatorRevisePass;
+  const totalDistractor  = distractorPass  * (1 + effectiveRevisions);
+  const totalVerifier    = verifierPass    * (1 + effectiveRevisions);
+  const totalJudge       = judgePass       * (1 + effectiveRevisions);
+
+  const total = blueprint + mainPass + effectiveRevisions * revisePass;
 
   // Rough input/output split: input ~55%, output ~45% (Judge dominated by reasoning output).
   const inputTokens = Math.round(total * 0.55);
@@ -70,9 +92,10 @@ export function estimateTokens(
       blueprint,
       generator: totalGenerator,
       distractor: totalDistractor,
+      verifier: totalVerifier,
       judge: totalJudge,
     },
-    passes: 1 + revisions,
+    passes: 1 + effectiveRevisions,
     item_count: n,
     cost_usd: costUsd,
   };

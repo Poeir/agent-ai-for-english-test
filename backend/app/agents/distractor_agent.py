@@ -135,9 +135,15 @@ async def distractor_node(state: PipelineState) -> dict:
                 return {"error": f"distractor_error: question {i} options keys must be A/B/C/D, got {list(options.keys())}"}
             if item.get("correct_answer") not in valid_letters:
                 return {"error": f"distractor_error: question {i} correct_answer must be A/B/C/D, got {item.get('correct_answer')}"}
-            # Preserve original question_type / extras from the source question
+            # Preserve generator-authored metadata that the distractor LLM doesn't return.
+            # Without this carry-forward, explanation/objective/tags etc. silently vanish
+            # when an item passes through the distractor — leading to "missing why" cards
+            # in the UI and mismatched explanations after letter rebalancing.
             src = mcq_questions[i]
             item["question_type"] = src.get("question_type") or "multiple_choice"
+            for field in ("explanation", "objective", "tags", "difficulty_band", "score_weight"):
+                if src.get(field) is not None:
+                    item.setdefault(field, src[field])
             if src.get("extras") is not None:
                 item["extras"] = src["extras"]
             finalized[mcq_indices[i]] = item

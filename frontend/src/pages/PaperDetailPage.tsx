@@ -11,13 +11,14 @@ import type { JobResponse, Paper, PaperSection, QuestionItem } from "../types/ap
 import { getSkillGroup, type SkillGroupMeta, buildSinglePaperPrint, openPrintWindow } from "../utils/paperPrint";
 import { downloadPaperJson } from "../utils/paperJson";
 
-type NodeKey = "blueprint" | "generator" | "distractor" | "judge";
+type NodeKey = "blueprint" | "generator" | "distractor" | "verifier" | "judge";
 type NodeStatus = "waiting" | "running" | "done" | "failed";
 
 const NODES: Array<{ key: NodeKey; title: string }> = [
   { key: "blueprint",  title: "Blueprint" },
   { key: "generator",  title: "Generator" },
   { key: "distractor", title: "Distractor" },
+  { key: "verifier",   title: "Verifier" },
   { key: "judge",      title: "Judge" },
 ];
 
@@ -47,6 +48,7 @@ function deriveNodeStatus(node: NodeKey, job: JobResponse | undefined, section: 
       case "blueprint":  return Boolean(trace?.blueprint);
       case "generator":  return Boolean(trace?.raw_questions?.length) || Boolean(trace?.passage);
       case "distractor": return Boolean(trace?.questions_with_options?.length);
+      case "verifier":   return Boolean(trace?.verifier_results?.length);
       case "judge":      return Boolean(trace?.judge_results?.length);
     }
   })();
@@ -103,6 +105,13 @@ function summaryFor(node: NodeKey, trace: any): string | null {
       const qs = trace.questions_with_options || [];
       return qs.length ? `${qs.length} finalized` : null;
     }
+    case "verifier": {
+      const rs = trace.verifier_results || [];
+      if (!rs.length) return null;
+      const blocking = rs.filter((r: any) => r.blocking === true).length;
+      const agreed = rs.filter((r: any) => r.verdict === "agree").length;
+      return `${agreed}/${rs.length} ok${blocking ? ` · ${blocking} blocked` : ""}`;
+    }
     case "judge": {
       const rs = trace.judge_results || [];
       if (!rs.length) return null;
@@ -133,6 +142,7 @@ function SectionPipelineCard({ section }: { section: PaperSection }) {
       blueprint:  deriveNodeStatus("blueprint", job, section),
       generator:  deriveNodeStatus("generator", job, section),
       distractor: deriveNodeStatus("distractor", job, section),
+      verifier:   deriveNodeStatus("verifier", job, section),
       judge:      deriveNodeStatus("judge", job, section),
     }),
     [job, section],

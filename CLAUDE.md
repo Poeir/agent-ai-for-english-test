@@ -103,17 +103,19 @@ Routes support both `/ui/...` in backend-served mode and plain Vite dev paths th
 
 ### Multi-Agent Pipeline (LangGraph)
 
-The core generation logic lives in `backend/app/agents/`. `graph.py` runs four nodes sequentially, with a conditional revision edge after judge:
+The core generation logic lives in `backend/app/agents/`. `graph.py` runs five nodes sequentially, with conditional revision edges after both verifier and judge:
 
 ```text
-run_blueprint -> run_generator -> run_distractor -> run_judge -> [revise] -> run_generator -> ... -> end
+run_blueprint -> run_generator -> run_distractor -> run_verifier -> [revise] -> run_generator
+                                                                 \-> run_judge -> [revise] -> run_generator -> ... -> end
 ```
 
-Revision is controlled by `settings.max_revision_loops`; the judge sets `should_revise` while `revision_count < max_revision_loops`. With the default of `1`, every successful judge pass still triggers one polish loop.
+Revision budget is shared and controlled by `settings.max_revision_loops`. Both `verifier_should_revise` (verifier disagreed with the answer key, or found a multi-answer ambiguity) and judge's `should_revise` can fire — whichever triggers first increments `revision_count`, and once the budget is spent the other no longer routes back. Judge revises ONLY when at least one question failed (`not all_pass`); a fully passing first attempt now ends the pipeline immediately, halving cost on good outputs.
 
 - `blueprint_agent.py`: Parses a free-text requirement into a structured blueprint. If `state["blueprint"]` is already present, it returns immediately so paper sections can skip the blueprint LLM call.
-- `generator_agent.py`: Generates a passage plus question stems and correct answers from the blueprint. It fetches up to three curated examples from `example_items` and inlines judge feedback on revision passes. For `skill = "listening"`, the passage is a TTS-ready transcript: a multi-speaker dialogue (TOEIC Part 3 style) or a single-speaker monologue (TOEIC Part 4 style). When the section's `question_types` are only `photo_description` and/or `question_response` (TOEIC Parts 1-2), the passage is empty and each item is self-contained spoken text.
+- `generator_agent.py`: Generates a passage plus question stems and correct answers from the blueprint. It fetches up to three curated examples from `example_items` and inlines both verifier and judge feedback on revision passes. For `skill = "listening"`, the passage is a TTS-ready transcript: a multi-speaker dialogue (TOEIC Part 3 style) or a single-speaker monologue (TOEIC Part 4 style). When the section's `question_types` are only `photo_description` and/or `question_response` (TOEIC Parts 1-2), the passage is empty and each item is self-contained spoken text.
 - `distractor_agent.py`: Completes A/B/C/D options for MCQ-shaped items that need them and passes through complete or free-text items.
+- `verifier_agent.py`: Independent answer-key validator. (1) Blind solver — runs the LLM `verifier_k_samples` times (default 2, configurable via `VERIFIER_K_SAMPLES`) at elevated temperature without showing the claimed `correct_answer`, then takes a majority vote per item (verdicts: `agree`, `disagree_strong`, `uncertain`, or `subjective`). (2) Multi-answer detector — for MCQ items the solver agrees on, checks whether any non-key option is ALSO defensibly correct (a failure mode judge cannot catch because judge sees the key). Items where all k votes are unanimous AND average confidence is at least `verifier_multianswer_confidence_skip` (default 0.85) take a cheap-path and skip this LLM call. (3) Prompt validity — for `essay`/`short_answer`/`speaking_prompt` items, checks the prompt is answerable and gradable. Any blocking item routes the pipeline back to the generator (skipping judge for that pass) and consumes one revision loop.
 - `judge_agent.py`: Scores questions on CEFR alignment, distractor quality, grammar naturalness, and ambiguity risk. A question passes when `overall_score >= JUDGE_PASS_THRESHOLD` and `ambiguity_risk != "high"`.
 - `grader_agent.py`: Grades free-text session responses using `prompts/grader_system.txt`.
 
@@ -246,6 +248,8 @@ PostgreSQL with pgvector image in Docker Compose. Current SQLAlchemy models defi
 | `MAX_REVISION_LOOPS` | Maximum judge-triggered revision loops, default `1` in code |
 | `CEFR_MASTERY_THRESHOLD` | Minimum mastery ratio per CEFR level, default `0.7` |
 | `LLM_JSON_REPAIR_ENABLED` | Optional fallback LLM call to repair malformed agent JSON after local repair fails, default `false` |
+| `VERIFIER_K_SAMPLES` | Number of blind-solver passes the verifier runs per pipeline. Lower = cheaper, higher = more robust against single-sample noise. Default `2`. |
+| `VERIFIER_MULTIANSWER_CONFIDENCE_SKIP` | When all k solver votes are unanimous AND average confidence ≥ this value, skip the multi-answer detector LLM call for that item. Default `0.85`. |
 
 When adding or changing configuration, update `app/config.py`, `.env.example`, Docker Compose defaults, README notes, and this file together.
 

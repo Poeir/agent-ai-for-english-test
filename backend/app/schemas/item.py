@@ -14,6 +14,7 @@ class QuestionItemSchema(BaseModel):
     cefr_level: str | None
     difficulty: float | None
     judge_score: float | None
+    judge_detail: dict | None = None
     status: str
     revision_count: int
     difficulty_band: str | None = None

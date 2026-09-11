@@ -4,14 +4,15 @@ import { TokenUsage } from "./TokenEstimate";
 
 type ViewMode = "pretty" | "json";
 
-type NodeKey = "blueprint" | "generator" | "distractor" | "judge";
+type NodeKey = "blueprint" | "generator" | "distractor" | "verifier" | "judge";
 type NodeStatus = "waiting" | "running" | "done" | "failed";
 
 const NODES: Array<{ key: NodeKey; title: string; subtitle: string }> = [
   { key: "blueprint",  title: "Blueprint",  subtitle: "Parse the free-text requirement into a structured blueprint." },
-  { key: "generator",  title: "Generator",  subtitle: "Produce the passage (if any) and full question items with options. On a revision pass, inlines Judge feedback to refine output." },
+  { key: "generator",  title: "Generator",  subtitle: "Produce the passage (if any) and full question items with options. On a revision pass, inlines Verifier and Judge feedback to refine output." },
   { key: "distractor", title: "Distractor", subtitle: "Refine A/B/C/D options for MCQ-shape items; pass-through others." },
-  { key: "judge",      title: "Judge",      subtitle: "Score each question; always feeds suggestions back for one mandatory revision pass (configured via MAX_REVISION_LOOPS)." },
+  { key: "verifier",   title: "Verifier",   subtitle: "Independently re-solves each question (k=3 self-consistency, without seeing the answer key), checks for multi-answer ambiguity, and validates free-text prompts. Hard-gates the answer key." },
+  { key: "judge",      title: "Judge",      subtitle: "Score each question on CEFR alignment, distractor craft, grammar, and ambiguity; routes back for revision ONLY when one or more items fail (saves a pass when the first attempt is already good)." },
 ];
 
 function nodeStatus(node: NodeKey, job: JobResponse | undefined, trace: any): NodeStatus {
@@ -24,6 +25,7 @@ function nodeStatus(node: NodeKey, job: JobResponse | undefined, trace: any): No
       case "blueprint":  return Boolean(trace?.blueprint);
       case "generator":  return Boolean(trace?.raw_questions?.length) || Boolean(trace?.passage);
       case "distractor": return Boolean(trace?.questions_with_options?.length);
+      case "verifier":   return Boolean(trace?.verifier_results?.length);
       case "judge":      return Boolean(trace?.judge_results?.length);
     }
   })();
@@ -66,6 +68,13 @@ function summaryFor(node: NodeKey, trace: any): string | null {
     case "distractor": {
       const qs = trace?.questions_with_options || [];
       return qs.length ? `${qs.length} finalized` : null;
+    }
+    case "verifier": {
+      const rs = trace?.verifier_results || [];
+      if (!rs.length) return null;
+      const blocking = rs.filter((r: any) => r.blocking === true).length;
+      const agreed = rs.filter((r: any) => r.verdict === "agree").length;
+      return `${agreed}/${rs.length} agreed${blocking ? ` · ${blocking} blocked` : ""}`;
     }
     case "judge": {
       const rs = trace?.judge_results || [];
@@ -294,6 +303,88 @@ function ScoreBar({ label, value, max = 10 }: { label: string; value?: number | 
   );
 }
 
+function verdictBadge(v?: string) {
+  if (v === "agree") return "completed";
+  if (v === "disagree_strong") return "failed";
+  if (v === "uncertain") return "partial";
+  if (v === "subjective") return "pending";
+  return "pending";
+}
+
+function VerifierPretty({ trace }: { trace: any }) {
+  const results: any[] = trace?.verifier_results || [];
+  if (!results.length) return <Empty />;
+  const blocking = results.filter((r) => r.blocking === true).length;
+  const agreed = results.filter((r) => r.verdict === "agree").length;
+  const disagreed = results.filter((r) => r.verdict === "disagree_strong").length;
+  const ambiguous = results.filter((r) => (r.multi_answer_risk || []).length > 0).length;
+
+  return (
+    <div>
+      <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: 10, fontSize: 13, marginBottom: 8 }}>
+        <strong>Verifier:</strong>{" "}
+        {trace?.verifier_disagreed === true ? <span className="badge failed">DISAGREED</span> : <span className="badge completed">OK</span>}
+        <span className="muted"> · {agreed}/{results.length} agreed</span>
+        {disagreed ? <span className="muted"> · {disagreed} disagree</span> : null}
+        {ambiguous ? <span className="muted"> · {ambiguous} multi-answer</span> : null}
+        {blocking ? <span className="muted"> · <strong style={{ color: "#b91c1c" }}>{blocking} blocking</strong></span> : null}
+        <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+          k=3 blind solves per item · multi-answer detector per MCQ · prompt-validity check per free-text item
+        </div>
+      </div>
+      {results.map((r, i) => {
+        const votes: string[] = r.verifier_votes || [];
+        const ma: string[] = r.multi_answer_risk || [];
+        const pv = r.prompt_validity;
+        return (
+          <div key={i} className="question-card" style={{ marginTop: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+              <div style={{ fontWeight: 650 }}>Q{(r.question_index ?? i) + 1}</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <span className={`badge ${verdictBadge(r.verdict)}`}>{r.verdict || "—"}</span>
+                {r.agreement != null ? <span className="badge" style={{ borderColor: "#cbd5e1", background: "#f1f5f9", color: "#475569" }}>agree {Math.round((r.agreement || 0) * 100)}%</span> : null}
+                {r.blocking ? <span className="badge failed">blocking</span> : null}
+              </div>
+            </div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              Key: <strong style={{ color: "#0f172a" }}>{r.claimed_answer ?? "—"}</strong>
+              {r.majority_answer && r.majority_answer !== r.claimed_answer ? (
+                <> · Solver chose: <strong style={{ color: "#b91c1c" }}>{r.majority_answer}</strong></>
+              ) : null}
+              {votes.length ? <> · Votes: <span style={{ fontVariantNumeric: "tabular-nums" }}>[{votes.join(", ")}]</span></> : null}
+            </div>
+            {ma.length ? (
+              <div style={{ marginTop: 6 }}>
+                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}>Also defensibly correct</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 2 }}>
+                  {ma.map((L, k) => (
+                    <span key={k} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "#fee2e2", border: "1px solid #fecaca", color: "#991b1b" }}>Option {L}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {pv && pv.valid === false ? (
+              <div style={{ marginTop: 6 }}>
+                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}>Prompt issues</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 2 }}>
+                  {(pv.issues || []).map((it: string, k: number) => (
+                    <span key={k} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "#fee2e2", border: "1px solid #fecaca", color: "#991b1b" }}>{it}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {r.reasoning ? (
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                <strong>Why:</strong> {r.reasoning}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function JudgePretty({ trace }: { trace: any }) {
   const results: any[] = trace?.judge_results || [];
   if (!results.length) return <Empty />;
@@ -369,7 +460,7 @@ function JsonBlock({ value }: { value: any }) {
 
 export function PipelineView({ job, requirement }: { job: JobResponse | undefined; requirement: string }) {
   const [mode, setMode] = useState<ViewMode>("pretty");
-  const [expanded, setExpanded] = useState<Set<NodeKey>>(new Set(["blueprint","generator","distractor","judge"]));
+  const [expanded, setExpanded] = useState<Set<NodeKey>>(new Set(["blueprint","generator","distractor","verifier","judge"]));
   const trace: any = useMemo(() => (job?.result as any)?.trace || {}, [job]);
   const wrapperRef = useRef<HTMLDivElement>(null);
   type Pt = { x: number; y: number };
@@ -456,6 +547,7 @@ export function PipelineView({ job, requirement }: { job: JobResponse | undefine
     blueprint:  nodeStatus("blueprint", job, trace),
     generator:  nodeStatus("generator", job, trace),
     distractor: nodeStatus("distractor", job, trace),
+    verifier:   nodeStatus("verifier", job, trace),
     judge:      nodeStatus("judge", job, trace),
   };
 
@@ -471,12 +563,14 @@ export function PipelineView({ job, requirement }: { job: JobResponse | undefine
     blueprint:  { raw_requirement: requirement || job?.request?.requirement || "" },
     generator:  { blueprint: trace.blueprint || null },
     distractor: { passage: trace.passage || null, raw_questions: trace.raw_questions || null },
+    verifier:   { passage: trace.passage || null, questions_with_options: trace.questions_with_options || null },
     judge:      { questions_with_options: trace.questions_with_options || null },
   };
   const outputs: Record<NodeKey, any> = {
     blueprint:  { blueprint: trace.blueprint || null },
     generator:  { passage: trace.passage || null, raw_questions: trace.raw_questions || null },
     distractor: { questions_with_options: trace.questions_with_options || null },
+    verifier:   { verifier_results: trace.verifier_results || null, verifier_disagreed: trace.verifier_disagreed },
     judge:      { judge_results: trace.judge_results || null, judge_passed: trace.judge_passed, revision_count: trace.revision_count },
   };
 
@@ -492,6 +586,12 @@ export function PipelineView({ job, requirement }: { job: JobResponse | undefine
         ? <div className="muted" style={{ fontSize: 13 }}>{qs.length} question(s) generated, with passage of {String(inputs.distractor.passage || "").length} chars.</div>
         : <Empty />;
     }
+    if (k === "verifier") {
+      const qs = inputs.verifier.questions_with_options || [];
+      return qs.length
+        ? <div className="muted" style={{ fontSize: 13 }}>{qs.length} question(s) ready for independent re-solve.</div>
+        : <Empty />;
+    }
     const qs = inputs.judge.questions_with_options || [];
     return qs.length
       ? <div className="muted" style={{ fontSize: 13 }}>{qs.length} question(s) ready for judging.</div>
@@ -505,6 +605,7 @@ export function PipelineView({ job, requirement }: { job: JobResponse | undefine
       const qs: any[] = outputs.distractor.questions_with_options || [];
       return qs.length ? <div>{qs.map((q, i) => <QuestionCard key={i} q={q} index={i} />)}</div> : <Empty />;
     }
+    if (k === "verifier") return <VerifierPretty trace={trace} />;
     return <JudgePretty trace={trace} />;
   }
 

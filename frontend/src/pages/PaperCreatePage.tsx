@@ -56,6 +56,80 @@ const PAPER_TEMPLATES: PaperTemplate[] = [
     sections: [defaultSection(1)],
   },
   {
+    key: "quick_placement_15",
+    label: "Quick Placement (15 min, 3-Band)",
+    description:
+      "15 min / 20 items, fully auto-gradable. Ladder design at A2 → B1 → C1 only (B2 skipped — same band as B1). Result maps to 3 bands: ≤A2 Beginner, B1–B2 Intermediate, C1+ Advanced. 4 items per level so passing needs 3/4 (75% ≥ 0.7 mastery threshold).",
+    paperName: "Quick Placement Test (15 min)",
+    paperDescription:
+      "Compact 3-band placement test (Beginner / Intermediate / Advanced). Grammar is sampled at A2, B1, and C1; reading at B1 and C1. All items are objective MCQ so results are available immediately after submission. Band mapping: below A1–A2 = Beginner, B1–B2 = Intermediate, C1–C2 = Advanced.",
+    timeLimit: 15,
+    sections: (() => {
+      const GRAMMAR_BASE =
+        "Practical everyday and workplace grammar from emails, messages, and conversations: tense, modals, articles, prepositions, agreement, and natural phrasing.";
+      const READ_BASE =
+        "Short everyday or workplace text — an email, notice, memo, chat thread, or announcement — with comprehension questions.";
+
+      // Each rung of the ladder must clearly separate the band below it from the
+      // band above it, so the stretch hints pin difficulty hard to the level.
+      const STRETCH: Record<string, string> = {
+        A2: "Keep strictly at A2: high-frequency vocabulary, simple tenses, basic prepositions and articles, short direct sentences. A beginner below A2 should get these wrong; any B1 candidate should find them easy.",
+        B1: "Target solid B1: common workplace vocabulary, present perfect vs past simple, modal choice, multi-clause sentences. An A2 candidate should struggle; a B2 candidate should find them comfortable.",
+        C1: "Target C1: nuanced register, idiomatic expressions, complex structure, implied meaning, polite hedging. A B1-B2 candidate should find these genuinely difficult. Sophistication should come from register and implication, not rare academic lexicon.",
+      };
+
+      const MIX: Record<string, { easy: number; medium: number; hard: number }> = {
+        A2: { easy: 0.5, medium: 0.4, hard: 0.1 },
+        B1: { easy: 0.3, medium: 0.5, hard: 0.2 },
+        C1: { easy: 0.15, medium: 0.5, hard: 0.35 },
+      };
+
+      const out: SectionDraft[] = [];
+
+      // Grammar ladder × 3 levels (12 items, ~8 min)
+      for (const lvl of ["A2", "B1", "C1"]) {
+        out.push({
+          name: `Grammar ${lvl}`,
+          skill: "grammar",
+          cefr: lvl,
+          topic: `${GRAMMAR_BASE} ${STRETCH[lvl]}`,
+          passage_length: "none",
+          item_count: 4,
+          section_score: 4,
+          section_time_min: lvl === "A2" ? 2 : 3,
+          question_types:
+            lvl === "A2"
+              ? ["multiple_choice", "fill_blank"]
+              : ["multiple_choice", "fill_blank", "error_identification"],
+          difficulty_mix: MIX[lvl],
+        });
+      }
+
+      // Reading ladder × 2 levels (8 items, ~7 min). No A2 reading section —
+      // the classifier only gates on levels present, so reading ladders B1 → C1.
+      const READING_LEN: Record<string, string> = { B1: "100-140 words", C1: "150-200 words" };
+      for (const lvl of ["B1", "C1"]) {
+        out.push({
+          name: `Reading ${lvl}`,
+          skill: "reading",
+          cefr: lvl,
+          topic: `${READ_BASE} ${STRETCH[lvl]}`,
+          passage_length: READING_LEN[lvl],
+          item_count: 4,
+          section_score: 4,
+          section_time_min: lvl === "B1" ? 3 : 4,
+          question_types:
+            lvl === "B1"
+              ? ["main_idea", "detail", "vocabulary_in_context"]
+              : ["inference", "detail", "tone_purpose"],
+          difficulty_mix: MIX[lvl],
+        });
+      }
+
+      return out;
+    })(),
+  },
+  {
     key: "english_competency_30",
     label: "English Competency Test (30)",
     description: "30 questions / 30 min: ECT-style Listening (15) + Vocabulary, Grammar, and Reading (15). Shared situations are capped at 4 questions.",
@@ -314,6 +388,115 @@ const PAPER_TEMPLATES: PaperTemplate[] = [
         difficulty_mix: { easy: 0.15, medium: 0.5, hard: 0.35 },
       },
     ],
+  },
+  {
+    key: "workplace_quick_20",
+    label: "Workplace Quick (20 min)",
+    description: "20 min / 16 items, reading-only, B1-C2. Each skill (Vocab, Conversation, Grammar, Short Reading) is sampled at all 4 CEFR levels so the classifier can place candidates from B1 through C2.",
+    paperName: "Workplace English Quick Assessment (20 min)",
+    paperDescription: "Compact 20-minute reading-only test for working professionals. Vocabulary, functional conversation, business grammar, and short workplace reading — each sampled at B1, B2, C1, and C2 so the CEFR classifier can discriminate across the full B1-C2 range. No listening required.",
+    timeLimit: 20,
+    sections: (() => {
+      const VOCAB_BASE = "Workplace vocabulary in context: business collocations, polite register, and meaning from context. Use realistic office sentences about meetings, emails, deadlines, project updates, customer service, and reports.";
+      const GRAMMAR_BASE = "Practical workplace grammar from emails, reports, meeting notes, and customer messages: tense, modals, conditionals, articles, prepositions, subject-verb agreement, and natural workplace phrasing.";
+      const CONV_BASE = "Functional workplace conversation: 2-3 line dialogues with one missing turn — polite requests, scheduling, clarification, customer service, meetings, small talk with colleagues or clients.";
+      const READ_BASE = "Short workplace text — an email, memo, notice, chat thread, or internal announcement — with one comprehension item per passage.";
+
+      // Per-CEFR difficulty bias (easy/medium/hard within that level)
+      const MIX: Record<string, { easy: number; medium: number; hard: number }> = {
+        B1: { easy: 0.4, medium: 0.5, hard: 0.1 },
+        B2: { easy: 0.25, medium: 0.55, hard: 0.2 },
+        C1: { easy: 0.15, medium: 0.5, hard: 0.35 },
+        C2: { easy: 0.1, medium: 0.4, hard: 0.5 },
+      };
+
+      // Per-CEFR stretch hints appended to each topic.
+      // C2 is deliberately framed as WORKPLACE diplomacy/register — NOT as rare/SAT
+      // vocabulary. A C2 business communicator hedges, manages tone, and reads
+      // between the lines; they do not use words like "placate" or "obfuscate".
+      const STRETCH: Record<string, string> = {
+        B1: "Keep vocabulary and structures at the B1 foundation level: common workplace nouns/verbs, simple tenses, direct phrasing. For grammar items, test MEANINGFUL choices (tense fit, modal choice, preposition collocation) — do NOT test obvious typo-style errors like 'must be submit'.",
+        B2: "Target solid B2: less common business vocabulary, multi-clause sentences, modal nuance, mild indirectness. Distractors should be defensible misreadings, not obviously wrong.",
+        C1: "Target C1 workplace English: nuanced register, idiomatic business expressions, complex sentence structure, implied meaning, polite hedging. Test diplomatic phrasing and implication — not academic vocabulary.",
+        C2: "Target C2 WORKPLACE English: diplomatic hedging, strategic tone, executive register, subtle disagreement, reading between the lines, indirect refusal, face-saving language. DO NOT use academic/SAT/GRE vocabulary (no 'placate', 'obfuscate', 'prevaricate', 'circumlocution'). Words must sound natural in a real corporate email or boardroom — sophistication should come from REGISTER and IMPLICATION, not rare lexicon.",
+      };
+
+      const READING_LEN: Record<string, string> = {
+        B1: "80-110 words",
+        B2: "110-140 words",
+        C1: "150-200 words",
+        C2: "200-260 words",
+      };
+
+      const LEVELS = ["B1", "B2", "C1", "C2"] as const;
+      const out: SectionDraft[] = [];
+
+      // Vocabulary × 4 levels (4 items, 4 min total — ~1 min per item)
+      for (const lvl of LEVELS) {
+        out.push({
+          name: `Vocabulary ${lvl}`,
+          skill: "vocabulary",
+          cefr: lvl,
+          topic: `${VOCAB_BASE} ${STRETCH[lvl]}`,
+          passage_length: "none",
+          item_count: 1,
+          section_score: 1,
+          section_time_min: 1,
+          question_types: ["fill_blank", "multiple_choice", "vocabulary_in_context"],
+          difficulty_mix: MIX[lvl],
+        });
+      }
+
+      // Grammar × 4 levels (4 items, 4 min)
+      for (const lvl of LEVELS) {
+        out.push({
+          name: `Grammar ${lvl}`,
+          skill: "grammar",
+          cefr: lvl,
+          topic: `${GRAMMAR_BASE} ${STRETCH[lvl]}`,
+          passage_length: "none",
+          item_count: 1,
+          section_score: 1,
+          section_time_min: 1,
+          question_types: ["fill_blank", "multiple_choice", "error_identification"],
+          difficulty_mix: MIX[lvl],
+        });
+      }
+
+      // Conversation × 4 levels (4 items, 4 min)
+      for (const lvl of LEVELS) {
+        out.push({
+          name: `Conversation ${lvl}`,
+          skill: "integrated",
+          cefr: lvl,
+          topic: `${CONV_BASE} ${STRETCH[lvl]}`,
+          passage_length: "none",
+          item_count: 1,
+          section_score: 1,
+          section_time_min: 1,
+          question_types: ["multiple_choice"],
+          difficulty_mix: MIX[lvl],
+        });
+      }
+
+      // Short Reading × 4 levels (4 items, 8 min — passage + question per level)
+      for (const lvl of LEVELS) {
+        out.push({
+          name: `Short Reading ${lvl}`,
+          skill: "reading",
+          cefr: lvl,
+          topic: `${READ_BASE} ${STRETCH[lvl]}`,
+          passage_length: READING_LEN[lvl],
+          item_count: 1,
+          section_score: 1,
+          section_time_min: 2,
+          question_types: ["main_idea", "inference", "implication", "tone_purpose"],
+          difficulty_mix: MIX[lvl],
+        });
+      }
+
+      return out;
+    })(),
   },
   {
     key: "b1_competency",

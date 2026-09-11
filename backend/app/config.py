@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     max_revision_loops: int = 1
     cefr_mastery_threshold: float = 0.7
     llm_json_repair_enabled: bool = False
+    # Verifier self-consistency: number of blind-solver passes per pipeline run.
+    # 2 = cheaper (default), 3 = more robust against single-sample noise.
+    verifier_k_samples: int = 2
+    # Skip the multi-answer detector when all k solver votes agree AND the average
+    # confidence is at least this value (cheap-path for clearly-correct items).
+    verifier_multianswer_confidence_skip: float = 0.85
 
 
 settings = Settings()

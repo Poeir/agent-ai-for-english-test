@@ -247,6 +247,12 @@ All three responses MUST:
 - Be at the same CEFR level — no response uses markedly harder/easier vocabulary than the others.
 - Stand alone without the question — i.e. each could plausibly follow SOME workplace utterance.
 
+**Distinctness requirement (CRITICAL for Question-Response):**
+The three responses must be CLEARLY DIFFERENT from each other in meaning. After reading all three, a test-taker should be able to identify the unique correct response without guessing. Specifically:
+- DO NOT make two responses that both plausibly answer the question (multi-answer ambiguity).
+- DO NOT make distractors that are vague enough to "kind of work" — each distractor should be wrong for an IDENTIFIABLE reason (wrong question type, wrong topic, same-word echo, etc.).
+- The correct response should answer the question DIRECTLY; distractors should fail at a SPECIFIC trap point you can name.
+
 Worked example (B1 listening, Part 2):
 {
   "question_type": "question_response",
@@ -275,6 +281,13 @@ Every question MUST also include these 5 metadata fields (in addition to the tem
 - "score_weight": positive number (default 1.0; if section_score and item_count are given in the blueprint, target ≈ section_score / item_count)
 - "objective": one short sentence (Thai or English) describing what the item measures, e.g. "Tests present simple subject-verb agreement"
 - "explanation": 1–3 sentences explaining WHY the correct_answer is right and what concept the item drills (this is the answer-key rationale shown after grading)
+
+  **CRITICAL — explanation rules (READ TWICE):**
+  - The explanation MUST describe the correct answer by its CONTENT, not by its letter.
+  - DO NOT write "Option A is correct" / "Only B captures…" / "The correct answer is C" / "(D) is the answer". These letter labels become WRONG the moment options are shuffled later in the pipeline.
+  - DO write: "The correct option states that the company should run pilot programs first, because paragraph 2 explicitly recommends a phased rollout." — i.e. paraphrase the answer's content and cite the passage evidence.
+  - It is OK to reference distractors by their CONTENT too: "The 'mandate immediately' option contradicts the passage" rather than "Option C contradicts the passage".
+  - Single letters A/B/C/D must NOT appear anywhere in the explanation field.
 - "tags": list of short concept tags, e.g. ["present-simple","subject-verb-agreement"]
 
 If the blueprint includes a `difficulty_mix` object (e.g. `{"easy":0.4,"medium":0.4,"hard":0.2}`), distribute the items' `difficulty_band` to match that proportion (rounding sensibly when items_count is small).

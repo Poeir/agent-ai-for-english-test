@@ -79,10 +79,63 @@ def _format_examples(examples: list[ExampleItem]) -> str:
     )
 
 
-def _format_revision_feedback(state: PipelineState) -> str:
-    """When this is a revision pass, inline the judge's previous critique so the LLM addresses it."""
-    if state.get("revision_count", 0) <= 0:
+def _format_verifier_feedback(state: PipelineState) -> str:
+    """Surface verifier disagreements and multi-answer flags. Verifier-triggered revisions
+    happen BEFORE judge, so judge_results may be empty on this pass — verifier feedback is
+    the primary signal for the generator to act on.
+    """
+    verifier_results = state.get("verifier_results") or []
+    blocking = [r for r in verifier_results if r.get("blocking")]
+    if not blocking:
         return ""
+
+    lines = [
+        "## VERIFIER FEEDBACK — answer-key / multi-answer problems detected",
+        "An independent solver re-attempted these questions WITHOUT seeing your answer key.",
+        "Fix every item below. These are the most serious failure modes — an answer key that is wrong, or distractors that are ALSO defensibly correct, must be eliminated.",
+        "",
+    ]
+    for r in blocking:
+        idx = r.get("question_index")
+        qtype = r.get("question_type")
+        claimed = r.get("claimed_answer")
+        majority = r.get("majority_answer")
+        agreement = r.get("agreement")
+        verdict = r.get("verdict")
+        reasoning = r.get("reasoning") or ""
+        multi_risk = r.get("multi_answer_risk") or []
+        prompt_validity = r.get("prompt_validity")
+
+        lines.append(f"- Question {idx} ({qtype}) — verdict={verdict}")
+        if verdict == "disagree_strong":
+            lines.append(
+                f"    ISSUE: You marked '{claimed}' correct, but {agreement} of independent solvers chose '{majority}'."
+            )
+            if reasoning:
+                lines.append(f"    EVIDENCE: {reasoning}")
+            lines.append("    FIX:   Either revise the passage/stem so '{claimed}' is uniquely correct, "
+                         "or replace the question entirely if the current key is unjustifiable.".replace("{claimed}", str(claimed)))
+        if multi_risk:
+            lines.append(
+                f"    ISSUE: Option(s) {', '.join(multi_risk)} are ALSO defensibly correct alongside the key '{claimed}'."
+            )
+            if reasoning:
+                lines.append(f"    DETAIL: {reasoning}")
+            lines.append(
+                f"    FIX:   Rewrite option(s) {', '.join(multi_risk)} so they are clearly wrong "
+                "(use a subtle but unambiguous misreading — scope shift, reversed causality, off-topic detail)."
+            )
+        if prompt_validity and not prompt_validity.get("valid"):
+            for issue in prompt_validity.get("issues") or []:
+                lines.append(f"    ISSUE: {issue}")
+            for sug in prompt_validity.get("suggestions") or []:
+                lines.append(f"    FIX:   {sug}")
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def _format_judge_feedback(state: PipelineState) -> str:
+    """Inline judge's previous critique."""
     judge_results = state.get("judge_results") or []
     if not judge_results:
         return ""
@@ -90,14 +143,14 @@ def _format_revision_feedback(state: PipelineState) -> str:
     passed = state.get("judge_passed", False)
     verdict = "passed" if passed else "failed"
     header = (
-        "## REVISION FEEDBACK (refine using judge feedback below)"
+        "## JUDGE FEEDBACK (refine using critique below)"
         if passed
-        else "## REVISION FEEDBACK (previous attempt FAILED — fix every issue below)"
+        else "## JUDGE FEEDBACK (previous attempt FAILED — fix every issue below)"
     )
 
     lines = [
         header,
-        f"Previous overall verdict: {verdict} (revision attempt #{state.get('revision_count', 0)}).",
+        f"Previous judge verdict: {verdict}.",
         "",
     ]
     for r in judge_results:
@@ -117,6 +170,24 @@ def _format_revision_feedback(state: PipelineState) -> str:
         lines.append("Rewrite the passage and questions to specifically address every ISSUE above. Do NOT repeat the same mistakes.")
     lines.append("")
     return "\n".join(lines) + "\n"
+
+
+def _format_revision_feedback(state: PipelineState) -> str:
+    if state.get("revision_count", 0) <= 0:
+        return ""
+    blocks = [
+        f"This is revision attempt #{state.get('revision_count', 0)}. Address all feedback below.",
+        "",
+    ]
+    verifier_block = _format_verifier_feedback(state)
+    judge_block = _format_judge_feedback(state)
+    if not verifier_block and not judge_block:
+        return ""
+    if verifier_block:
+        blocks.append(verifier_block)
+    if judge_block:
+        blocks.append(judge_block)
+    return "## REVISION FEEDBACK\n" + "\n".join(blocks)
 
 
 async def generator_node(state: PipelineState) -> dict:

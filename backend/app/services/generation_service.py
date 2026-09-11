@@ -11,6 +11,7 @@ from app.database import AsyncSessionLocal
 from app.models.generation_job import GenerationJob
 from app.models.item import Passage, QuestionItem
 from app.services import job_registry
+from app.utils.item_quality import neutralize_letter_references
 from app.utils.llm_client import install_token_bucket
 
 
@@ -23,6 +24,16 @@ async def _update_job(job_id: str, **kwargs):
             await session.commit()
 
 
+def _verifier_map(state: PipelineState) -> dict[int, dict]:
+    """Index verifier results by question_index for per-item persistence."""
+    results = state.get("verifier_results") or []
+    return {
+        r["question_index"]: r
+        for r in results
+        if isinstance(r, dict) and isinstance(r.get("question_index"), int)
+    }
+
+
 async def _save_results(
     state: PipelineState,
     paper_id: str | None = None,
@@ -31,6 +42,21 @@ async def _save_results(
     """Persist passage and question items to DB.
     Returns (item_ids, passage_id_str). When paper_id/section_name are passed, items are tagged with them.
     """
+    # Item-count integrity: the pipeline must produce roughly as many questions as the
+    # blueprint requested. Silent under-production (e.g. judge rejected most items, or
+    # the generator returned a malformed array that the parser only partially recovered)
+    # would otherwise persist a "successful" section with empty/short items, which the
+    # UI then shows as a blank panel. Fail loudly so the operator sees the problem.
+    bp_for_check = state.get("blueprint") or {}
+    expected_items = int(bp_for_check.get("item_count") or 0)
+    actual_items = len(state.get("questions_with_options") or state.get("raw_questions") or [])
+    if expected_items > 0 and actual_items < expected_items:
+        raise ValueError(
+            f"Refusing to persist: pipeline produced {actual_items} items but blueprint "
+            f"requested {expected_items}. Section is incomplete and would render as a "
+            f"blank/short panel in the UI."
+        )
+
     async with AsyncSessionLocal() as session:
         passage = Passage(
             content=state["passage"] or "",
@@ -46,6 +72,7 @@ async def _save_results(
         questions = state.get("questions_with_options") or state.get("raw_questions") or []
         judge_results = state.get("judge_results") or []
         judge_map = {r["question_index"]: r for r in judge_results}
+        verifier_map = _verifier_map(state)
         revision_count = state.get("revision_count", 0)
 
         bp = state["blueprint"]
@@ -63,6 +90,17 @@ async def _save_results(
             passed = judge.get("pass", False)
             status = "validated" if passed else "draft"
 
+            # Verifier feedback travels with the item. An item the verifier still
+            # blocks after the revision budget (wrong/ambiguous answer key, or an
+            # ungradable free-text prompt) is saved anyway but marked "flagged"
+            # so the operator can review it instead of losing the whole section.
+            verifier = verifier_map.get(i)
+            judge_detail = dict(judge)
+            if verifier:
+                judge_detail["verifier"] = verifier
+                if verifier.get("blocking"):
+                    status = "flagged"
+
             qtype = q.get("question_type") or (bp_types[i % len(bp_types)] if bp_types else None)
             options = q.get("options")
             extras = q.get("extras")
@@ -70,6 +108,13 @@ async def _save_results(
                 options = {**options, "_extras": extras}
             elif extras:
                 options = {"_extras": extras}
+
+            # Final safety pass on the rationale text: defensively strip any remaining
+            # option-letter references ("Option B is correct"). Even with the updated
+            # generator prompt forbidding letter labels and rebalance_correct_letters
+            # remapping them, this catches anything the model still slips in.
+            safe_explanation = neutralize_letter_references(q.get("explanation"))
+            safe_objective = neutralize_letter_references(q.get("objective"))
 
             item = QuestionItem(
                 passage_id=passage.id,
@@ -79,13 +124,13 @@ async def _save_results(
                 options=options,
                 cefr_level=bp["cefr"],
                 judge_score=overall_score,
-                judge_detail=judge,
+                judge_detail=judge_detail,
                 status=status,
                 revision_count=revision_count,
                 difficulty_band=q.get("difficulty_band"),
                 score_weight=q.get("score_weight") or default_weight,
-                objective=q.get("objective"),
-                explanation=q.get("explanation"),
+                objective=safe_objective,
+                explanation=safe_explanation,
                 tags=q.get("tags"),
                 paper_id=paper_uuid,
                 section_name=section_name,
@@ -104,6 +149,8 @@ def _trace_from_state(state: dict) -> dict:
         "passage": state.get("passage"),
         "raw_questions": state.get("raw_questions"),
         "questions_with_options": state.get("questions_with_options"),
+        "verifier_results": state.get("verifier_results"),
+        "verifier_disagreed": state.get("verifier_disagreed", False),
         "judge_results": state.get("judge_results"),
         "revision_count": state.get("revision_count", 0),
         "judge_passed": state.get("judge_passed", False),
@@ -136,6 +183,9 @@ async def run_pipeline(job_id: str, requirement: str):
         "passage": None,
         "raw_questions": None,
         "questions_with_options": None,
+        "verifier_results": None,
+        "verifier_disagreed": False,
+        "verifier_should_revise": False,
         "judge_results": None,
         "judge_passed": False,
         "revision_count": 0,
@@ -221,6 +271,9 @@ async def run_pipeline_for_blueprint(
         "passage": None,
         "raw_questions": None,
         "questions_with_options": None,
+        "verifier_results": None,
+        "verifier_disagreed": False,
+        "verifier_should_revise": False,
         "judge_results": None,
         "judge_passed": False,
         "revision_count": 0,

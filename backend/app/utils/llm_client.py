@@ -36,7 +36,14 @@ def get_client() -> AsyncOpenAI:
     return _client
 
 
-async def complete(system: str, user: str, model: str | None = None, *, agent: str | None = None) -> str:
+async def complete(
+    system: str,
+    user: str,
+    model: str | None = None,
+    *,
+    agent: str | None = None,
+    temperature: float = 0.7,
+) -> str:
     client = get_client()
     target_model = model or settings.openai_model
     try:
@@ -46,7 +53,7 @@ async def complete(system: str, user: str, model: str | None = None, *, agent: s
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            temperature=0.7,
+            temperature=temperature,
         )
         usage = getattr(response, "usage", None)
         bucket = _token_bucket_var.get()

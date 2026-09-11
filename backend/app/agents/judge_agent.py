@@ -51,7 +51,11 @@ async def judge_node(state: PipelineState) -> dict:
             for r in judge_results
         )
         revision_count = state.get("revision_count", 0)
-        should_revise = revision_count < settings.max_revision_loops
+        # Revise only when at least one question failed AND we still have budget.
+        # Previously this was unconditional ("always polish once") which doubled cost
+        # even when the first pass was already good. See verifier_agent for the other
+        # revise trigger (answer-key disagreement).
+        should_revise = (not all_pass) and revision_count < settings.max_revision_loops
 
         return {
             "judge_results": judge_results,

@@ -101,6 +101,31 @@ def _apply_outside_strings(text: str, fn) -> str:
     return "".join(out)
 
 
+# A number literal followed by characters that can never appear in valid JSON
+# outside a string (e.g. stray CJK tokens the LLM sampled mid-number: `8.下场`).
+# The garbage class excludes JSON structural chars and quotes so we stop at the
+# next delimiter. The number is an atomic group `(?>...)` so the regex cannot
+# backtrack into a valid fraction/exponent and misread `8.5` as `8` + `.5`.
+_NUMBER_GARBAGE_RE = re.compile(
+    r"(?P<num>(?>-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?))[^\s,:{}\[\]\"]+"
+)
+
+
+def _strip_number_garbage(chunk: str) -> str:
+    return _NUMBER_GARBAGE_RE.sub(lambda m: m.group("num"), chunk)
+
+
+_PYTHON_LITERAL_MAP = {"True": "true", "False": "false", "None": "null"}
+
+
+def _replace_python_literals(chunk: str) -> str:
+    return re.sub(
+        r"\b(True|False|None)\b",
+        lambda m: _PYTHON_LITERAL_MAP[m.group(1)],
+        chunk,
+    )
+
+
 def _repair_json_locally(text: str) -> str:
     repaired = _extract_json_candidate(text)
     repaired = _escape_control_chars_in_strings(repaired)
@@ -108,6 +133,7 @@ def _repair_json_locally(text: str) -> str:
         repaired,
         lambda chunk: re.sub(r",\s*([}\]])", r"\1", chunk),
     )
+    repaired = _apply_outside_strings(repaired, _strip_number_garbage)
     repaired = _apply_outside_strings(
         repaired,
         lambda chunk: re.sub(
@@ -116,6 +142,7 @@ def _repair_json_locally(text: str) -> str:
             chunk,
         ),
     )
+    repaired = _apply_outside_strings(repaired, _replace_python_literals)
     return repaired
 
 
@@ -129,6 +156,16 @@ def parse_json(raw: str) -> Any:
 
 def parse_json_no_llm_repair(raw: str) -> Any:
     return parse_json(raw)
+
+
+def _error_snippet(raw: str, err: json.JSONDecodeError, radius: int = 40) -> str:
+    candidate = _extract_json_candidate(raw)
+    pos = getattr(err, "pos", None)
+    if pos is None or pos < 0 or pos > len(candidate):
+        pos = 0
+    start = max(0, pos - radius)
+    end = min(len(candidate), pos + radius)
+    return repr(candidate[start:end])
 
 
 async def parse_json_with_repair(
@@ -147,7 +184,10 @@ async def parse_json_with_repair(
         return parse_json_no_llm_repair(raw)
     except json.JSONDecodeError as original_error:
         if not settings.llm_json_repair_enabled:
-            raise LLMError(f"invalid JSON after local repair: {original_error}") from original_error
+            snippet = _error_snippet(raw, original_error)
+            raise LLMError(
+                f"invalid JSON after local repair: {original_error} | near: {snippet}"
+            ) from original_error
 
         repair_system = (
             "You repair malformed JSON from an LLM. Return ONLY strict valid JSON. "
