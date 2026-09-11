@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "gofive-english-test"
+name = "english-test"
 version = "0.1.0"
 description = "AI-powered English test question generation system"
-authors = ["Gofive Internship"]
+authors = ["Poeir"]
 packages = [{include = "app"}]
 
 [tool.poetry.dependencies]

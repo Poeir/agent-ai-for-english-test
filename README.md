@@ -1,4 +1,4 @@
-# Gofive English Test - AI Question Generation System
+# English Test - AI Question Generation System
 
 AI-powered English test question generation system. A FastAPI backend orchestrates a LangGraph pipeline that calls the KKU AI LLM API (OpenAI-compatible), generates CEFR-leveled English test items, stores them in PostgreSQL, and exposes APIs for job tracking, test papers, candidate sessions, scoring, and CEFR classification. The frontend is a React/Vite console served by the backend at `/ui` after build.
 
@@ -30,7 +30,7 @@ AI-powered English test question generation system. A FastAPI backend orchestrat
 ## Project Structure
 
 ```text
-gofive-english-test/
+english-test/
 |-- backend/
 |   |-- app/
 |   |   |-- agents/          # LangGraph pipeline and LLM agents
@@ -204,4 +204,4 @@ Open LangGraph Studio at http://localhost:8123. The backend also exposes a Merma
 
 ## License
 
-Internal project - Gofive Internship.
+Personal portfolio project.

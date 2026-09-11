@@ -1,7 +1,7 @@
 import type { Paper, PaperSection, QuestionItem } from "../types/api";
 
 export interface PaperJsonExport {
-  format: "gofive-english-test/paper";
+  format: "english-test/paper";
   version: "1.0";
   exported_at: string;
   includes_answers: boolean;
@@ -112,7 +112,7 @@ export function buildPaperJson(
   });
 
   return {
-    format: "gofive-english-test/paper",
+    format: "english-test/paper",
     version: "1.0",
     exported_at: new Date().toISOString(),
     includes_answers: includeAnswers,
@@ -161,7 +161,7 @@ export function downloadPapersBundleJson(
   opts: { includeAnswers?: boolean } = {},
 ): void {
   const bundle = {
-    format: "gofive-english-test/paper-bundle" as const,
+    format: "english-test/paper-bundle" as const,
     version: "1.0" as const,
     exported_at: new Date().toISOString(),
     includes_answers: opts.includeAnswers ?? true,
